@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      context: .
+      target: development
+    container_name: back-ofertando-app
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${PORT:-3000}
+    ports:
+      - '${PORT:-3000}:3000'
+    volumes:
+      - .:/app
+      - /app/node_modules
