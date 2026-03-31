@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -10,4 +5,112 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum OfferStatus {
+  ACTIVE
+  REPORTED
+  DISABLED
+  DELETED
+}
+
+enum VoteType {
+  UP
+  DOWN
+}
+
+enum ReportReason {
+  EXPIRED
+  UNAVAILABLE
+  INCORRECT_INFO
+  SCAM
+  OTHER
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  username     String     @unique
+  passwordHash String
+  role         UserRole   @default(USER)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  offers  Offer[]
+  votes   Vote[]
+  reports Report[]
+
+  @@map("users")
+}
+
+model Offer {
+  id          String      @id @default(uuid())
+  title       String
+  description String
+  offerType   String
+  externalUrl String?
+  storeName   String
+  city        String
+  startDate   DateTime
+  endDate     DateTime
+  status      OfferStatus @default(ACTIVE)
+  score       Int         @default(0)
+  reportCount Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  disabledAt  DateTime?
+  deletedAt   DateTime?
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  votes       Vote[]
+  reports     Report[]
+
+  @@index([status])
+  @@index([createdById])
+  @@index([city])
+  @@map("offers")
+}
+
+model Vote {
+  id        String   @id @default(uuid())
+  type      VoteType
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId  String
+  offerId String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer   Offer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, offerId])
+  @@index([offerId])
+  @@map("votes")
+}
+
+model Report {
+  id        String       @id @default(uuid())
+  reason    ReportReason
+  comment   String?
+  createdAt DateTime     @default(now())
+
+  userId  String
+  offerId String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer   Offer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, offerId])
+  @@index([offerId])
+  @@map("reports")
 }
