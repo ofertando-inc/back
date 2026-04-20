@@ -1,4 +1,4 @@
-import { UserRole, UserStatus } from '../../../generated/prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 
 export type PublicUser = {
   id: string;

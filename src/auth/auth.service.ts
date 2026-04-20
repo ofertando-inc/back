@@ -5,9 +5,9 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-import { UserStatus } from '../../generated/prisma/client';
 import { PublicUser } from '../users/types/public-user.type';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
