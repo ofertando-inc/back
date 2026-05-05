@@ -6,6 +6,7 @@
 - Added the protected `GET /users/me` endpoint for retrieving the authenticated user
 - Added Prisma models and the initial PostgreSQL migration for users, offers, votes, and reports
 - Added a Postman collection and local environment for manual API testing
+- Added a project README with setup, database, testing, CI, and deployment notes
 - Added authentication e2e tests covering registration, login, duplicate credentials, and protected route access
 - Added a GitHub Actions CI workflow for the `dev` branch
 - Added CI validation for dependency installation, Prisma generation, database migrations, linting, unit tests, e2e tests, and build
