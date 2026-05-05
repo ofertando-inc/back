@@ -164,7 +164,7 @@ Current implemented routes:
 POST /auth/register
 POST /auth/login
 GET  /users/me
-GET  /
+GET  /                Health check
 ```
 
 `GET /users/me` requires:

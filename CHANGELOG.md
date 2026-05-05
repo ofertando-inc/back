@@ -17,6 +17,7 @@
 - Configured CORS origins through the `CORS_ORIGINS` environment variable
 - Updated the production start command to use the generated NestJS output path
 - Updated the backend runtime target to Node.js 24
+- Replaced the default NestJS starter root route with a backend health response
 - Fixed Prisma Client generation before builds
 - Fixed the production entrypoint used by deployed containers
 - Fixed frontend browser access by enabling configured CORS origins
