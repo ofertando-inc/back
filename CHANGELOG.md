@@ -13,10 +13,15 @@
 - Added CI validation for `dev`, `staging`, `main`, and version tags
 - Added PostgreSQL service support in CI for e2e tests
 - Added Docker Compose support for the local backend and PostgreSQL database
+- Added a versioned docker-compose.dev.yml for the Dokploy dev environment
+- Added a Docker entrypoint that runs Prisma migrate deploy before starting the application
+- Added a deploy-dev GitHub Actions workflow that builds the image, pushes it to GHCR, and triggers a Dokploy redeploy
 - Configured the application to use the standard Prisma Client from `@prisma/client`
 - Configured CORS origins through the `CORS_ORIGINS` environment variable
+- Configured the Prisma CLI as a runtime dependency so the production image can run migrations on boot
 - Updated the production start command to use the generated NestJS output path
 - Updated the backend runtime target to Node.js 24
+- Updated the production Docker stage to copy the Prisma schema and generate the client against production dependencies
 - Replaced the default NestJS starter root route with a backend health response
 - Fixed Prisma Client generation before builds
 - Fixed the production entrypoint used by deployed containers
