@@ -33,11 +33,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package*.json ./
+COPY prisma ./prisma
 
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev \
+ && npx prisma generate \
+ && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
+COPY docker/entrypoint.sh ./docker/entrypoint.sh
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start:prod"]
+ENTRYPOINT ["./docker/entrypoint.sh"]

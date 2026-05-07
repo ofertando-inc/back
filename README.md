@@ -1,98 +1,188 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Ofertando Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS backend for Ofertando, a community-driven deals platform.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Stack
 
-## Description
+- NestJS
+- TypeScript
+- Prisma
+- PostgreSQL
+- JWT authentication
+- Docker Compose
+- GitHub Actions
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Project Structure
 
-## Project setup
+```text
+src/
+  auth/       Authentication routes, DTOs, JWT strategy, and auth service
+  common/     Shared decorators and guards
+  config/     Application configuration helpers
+  prisma/     Prisma module and service
+  users/      User queries and protected current-user route
+  app.*       Root application module, controller, service, and setup
 
-```bash
-$ npm install
+prisma/
+  schema.prisma
+  migrations/
+
+test/
+  *.e2e-spec.ts
+  setup-e2e.ts
+  test-db.ts
+
+postman/
+  ofertando-api.postman_collection.json
+  ofertando-local.postman_environment.json
 ```
 
-## Compile and run the project
+## Requirements
+
+- Node.js 24+
+- npm 10+
+- Docker and Docker Compose
+
+## Environment
+
+Create a local environment file from the example:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cp .env.example .env
 ```
 
-## Run tests
+Required variables:
+
+```env
+NODE_ENV=development
+PORT=3000
+DATABASE_URL=postgresql://postgres:postgres@db:5432/ofertando?schema=public
+JWT_SECRET=change_me
+JWT_EXPIRES_IN=1d
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+```
+
+## Local Development With Docker
+
+Start the backend and PostgreSQL:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+docker compose up -d --build
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Run migrations inside the backend container:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+docker compose exec back-ofertando npm run prisma:migrate -- --name init
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Check database tables:
 
-## Resources
+```bash
+docker compose exec db psql -U postgres -d ofertando -c "\dt"
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+Follow backend logs:
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+docker logs -f back-ofertando-app
+```
 
-## Support
+## Local Development Without Docker
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Install dependencies:
 
-## Stay in touch
+```bash
+npm ci
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Generate Prisma Client:
 
-## License
+```bash
+npm run prisma:generate
+```
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Start the app in watch mode:
+
+```bash
+npm run start:dev
+```
+
+## Prisma
+
+Generate Prisma Client:
+
+```bash
+npm run prisma:generate
+```
+
+Create and apply a development migration:
+
+```bash
+npm run prisma:migrate -- --name migration_name
+```
+
+Apply existing migrations in deployed environments:
+
+```bash
+npx prisma migrate deploy
+```
+
+## Tests
+
+Run unit tests:
+
+```bash
+npm run test -- --runInBand
+```
+
+Run e2e tests:
+
+```bash
+npm run test:e2e -- --runInBand
+```
+
+E2E tests require a PostgreSQL test database. The CI workflow provides this automatically with a PostgreSQL service container.
+
+## Quality Checks
+
+Run the same core checks as CI:
+
+```bash
+npm run prisma:generate
+npm run lint:check
+npm run test -- --runInBand
+npm run test:e2e -- --runInBand
+npm run build
+```
+
+## API
+
+Current implemented routes:
+
+```text
+POST /auth/register
+POST /auth/login
+GET  /users/me
+GET  /                Health check
+```
+
+`GET /users/me` requires:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+Use the Postman collection in `postman/` for manual testing.
+
+## CI
+
+GitHub Actions runs validation on:
+
+- pushes to `dev`
+- pushes to `staging`
+- pushes to `main`
+- pull requests targeting `dev`, `staging`, or `main`
+- version tags matching `v*`
+
+The pipeline installs dependencies, generates Prisma Client, applies migrations to a test database, runs lint, unit tests, e2e tests, and builds the application.
