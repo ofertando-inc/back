@@ -18,6 +18,7 @@
 - Added a deploy-dev GitHub Actions workflow that builds the image, pushes it to GHCR, and triggers a Dokploy redeploy
 - Added Helmet to set HTTP security headers on every response
 - Added a global request rate limit and stricter throttling on authentication endpoints
+- Added a structured error response contract with a stable `key` field and a global exception filter that maps validation, Prisma, and HTTP errors to that contract
 - Configured the application to use the standard Prisma Client from `@prisma/client`
 - Configured CORS origins through the `CORS_ORIGINS` environment variable
 - Configured the Prisma CLI as a runtime dependency so the production image can run migrations on boot
