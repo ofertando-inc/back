@@ -1,6 +1,9 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import helmet from 'helmet';
 
 export function configureApp(app: INestApplication) {
+  app.use(helmet());
+
   const corsOrigins = getCorsOrigins();
 
   if (corsOrigins.length > 0) {

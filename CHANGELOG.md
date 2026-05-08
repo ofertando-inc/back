@@ -16,6 +16,7 @@
 - Added a versioned docker-compose.dev.yml for the Dokploy dev environment
 - Added a Docker entrypoint that runs Prisma migrate deploy before starting the application
 - Added a deploy-dev GitHub Actions workflow that builds the image, pushes it to GHCR, and triggers a Dokploy redeploy
+- Added Helmet to set HTTP security headers on every response
 - Configured the application to use the standard Prisma Client from `@prisma/client`
 - Configured CORS origins through the `CORS_ORIGINS` environment variable
 - Configured the Prisma CLI as a runtime dependency so the production image can run migrations on boot
