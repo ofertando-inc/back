@@ -19,6 +19,7 @@
 - Configured the application to use the standard Prisma Client from `@prisma/client`
 - Configured CORS origins through the `CORS_ORIGINS` environment variable
 - Configured the Prisma CLI as a runtime dependency so the production image can run migrations on boot
+- Configured the global ValidationPipe to reject requests that contain unknown fields
 - Updated the production start command to use the generated NestJS output path
 - Updated the backend runtime target to Node.js 24
 - Updated the production Docker stage to copy the Prisma schema and generate the client against production dependencies
