@@ -8,6 +8,9 @@
 - Added a Postman collection and local environment for manual API testing
 - Added a project README with setup, database, testing, CI, and deployment notes
 - Added authentication e2e tests covering registration, login, duplicate credentials, and protected route access
+- Added unit tests for the global exception filter and the validation exception factory
+- Added unit tests for the authentication service and the JWT strategy
+- Added e2e tests covering the structured error contract for validation failures, unknown fields, and protected routes
 - Added a GitHub Actions CI workflow for the `dev` branch
 - Added CI validation for dependency installation, Prisma generation, database migrations, linting, unit tests, e2e tests, and build
 - Added CI validation for `dev`, `staging`, `main`, and version tags
@@ -20,6 +23,7 @@
 - Added a global request rate limit and stricter throttling on authentication endpoints
 - Added a structured error response contract with a stable `key` field and a global exception filter that maps validation, Prisma, and HTTP errors to that contract
 - Updated the authentication service to raise structured errors that expose stable error keys to clients
+- Updated the JWT strategy to raise structured errors that expose stable error keys to clients
 - Configured the application to use the standard Prisma Client from `@prisma/client`
 - Configured CORS origins through the `CORS_ORIGINS` environment variable
 - Configured the Prisma CLI as a runtime dependency so the production image can run migrations on boot

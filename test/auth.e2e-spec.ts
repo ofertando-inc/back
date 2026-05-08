@@ -26,6 +26,19 @@ type ErrorResponse = {
   details?: Record<string, unknown>;
 };
 
+type ValidationFieldError = {
+  field: string;
+  constraints: string[];
+};
+
+type ValidationErrorResponse = {
+  key: string;
+  statusCode: number;
+  details: {
+    fields: ValidationFieldError[];
+  };
+};
+
 describe('Auth flow (e2e)', () => {
   let app: INestApplication<App>;
 
@@ -152,6 +165,39 @@ describe('Auth flow (e2e)', () => {
     expect(body.key).toBe('user.username_taken');
   });
 
+  it('rejects registration with an invalid email format', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: 'not-an-email',
+        username: 'maria',
+        password: 'password123',
+      });
+    const body = response.body as ValidationErrorResponse;
+    const emailField = body.details.fields.find((f) => f.field === 'email');
+
+    expect(response.status).toBe(400);
+    expect(body.key).toBe('validation.failed');
+    expect(emailField?.constraints).toContain('isEmail');
+  });
+
+  it('rejects registration when an unknown field is sent', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: 'maria@example.com',
+        username: 'maria',
+        password: 'password123',
+        role: 'admin',
+      });
+    const body = response.body as ValidationErrorResponse;
+    const roleField = body.details.fields.find((f) => f.field === 'role');
+
+    expect(response.status).toBe(400);
+    expect(body.key).toBe('validation.failed');
+    expect(roleField?.constraints).toContain('whitelistValidation');
+  });
+
   it('allows access to a protected route with a valid JWT', async () => {
     const registerResponse = await registerUser({
       email: 'protected@example.com',
@@ -175,16 +221,20 @@ describe('Auth flow (e2e)', () => {
 
   it('rejects access to a protected route without a token', async () => {
     const response = await request(app.getHttpServer()).get('/users/me');
+    const body = response.body as ErrorResponse;
 
     expect(response.status).toBe(401);
+    expect(body.key).toBe('auth.unauthorized');
   });
 
   it('rejects access to a protected route with an invalid token', async () => {
     const response = await request(app.getHttpServer())
       .get('/users/me')
       .set('Authorization', 'Bearer invalid-token');
+    const body = response.body as ErrorResponse;
 
     expect(response.status).toBe(401);
+    expect(body.key).toBe('auth.unauthorized');
   });
 
   function registerUser(data: {
