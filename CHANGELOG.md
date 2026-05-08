@@ -10,6 +10,7 @@
 - Added authentication e2e tests covering registration, login, duplicate credentials, and protected route access
 - Added unit tests for the global exception filter and the validation exception factory
 - Added unit tests for the authentication service and the JWT strategy
+- Added e2e tests covering the structured error contract for validation failures, unknown fields, and protected routes
 - Added a GitHub Actions CI workflow for the `dev` branch
 - Added CI validation for dependency installation, Prisma generation, database migrations, linting, unit tests, e2e tests, and build
 - Added CI validation for `dev`, `staging`, `main`, and version tags
