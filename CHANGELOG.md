@@ -9,6 +9,7 @@
 - Added a project README with setup, database, testing, CI, and deployment notes
 - Added authentication e2e tests covering registration, login, duplicate credentials, and protected route access
 - Added unit tests for the global exception filter and the validation exception factory
+- Added unit tests for the authentication service and the JWT strategy
 - Added a GitHub Actions CI workflow for the `dev` branch
 - Added CI validation for dependency installation, Prisma generation, database migrations, linting, unit tests, e2e tests, and build
 - Added CI validation for `dev`, `staging`, `main`, and version tags
