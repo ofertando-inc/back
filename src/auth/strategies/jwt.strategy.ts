@@ -1,9 +1,11 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { UserStatus } from '@prisma/client';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 
+import { AppException } from '../../common/exceptions/app.exception';
+import { ErrorKey } from '../../common/exceptions/error-keys';
 import { UsersService } from '../../users/users.service';
 import { JwtPayload } from '../types/jwt-payload.type';
 
@@ -24,11 +26,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const user = await this.usersService.findById(payload.sub);
 
     if (!user) {
-      throw new UnauthorizedException('User not found');
+      throw new AppException(
+        ErrorKey.AuthUnauthorized,
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     if (user.status === UserStatus.DISABLED) {
-      throw new UnauthorizedException('User account is disabled');
+      throw new AppException(
+        ErrorKey.AuthAccountDisabled,
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     return user;
