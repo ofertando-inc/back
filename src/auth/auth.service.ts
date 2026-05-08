@@ -1,13 +1,11 @@
-import {
-  BadRequestException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
+import { AppException } from '../common/exceptions/app.exception';
+import { ErrorKey } from '../common/exceptions/error-keys';
 import { PublicUser } from '../users/types/public-user.type';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
@@ -30,7 +28,7 @@ export class AuthService {
     );
 
     if (existingUserByEmail) {
-      throw new BadRequestException('Email is already registered');
+      throw new AppException(ErrorKey.UserEmailTaken, HttpStatus.BAD_REQUEST);
     }
 
     const existingUserByUsername = await this.usersService.findByUsername(
@@ -38,7 +36,10 @@ export class AuthService {
     );
 
     if (existingUserByUsername) {
-      throw new BadRequestException('Username is already registered');
+      throw new AppException(
+        ErrorKey.UserUsernameTaken,
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
     const passwordHash = await bcrypt.hash(
@@ -58,11 +59,17 @@ export class AuthService {
     const user = await this.usersService.findByEmail(loginDto.email);
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new AppException(
+        ErrorKey.AuthInvalidCredentials,
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     if (user.status === UserStatus.DISABLED) {
-      throw new UnauthorizedException('User account is disabled');
+      throw new AppException(
+        ErrorKey.AuthAccountDisabled,
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     const isPasswordValid = await bcrypt.compare(
@@ -71,7 +78,10 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new AppException(
+        ErrorKey.AuthInvalidCredentials,
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     return this.buildAuthResponse({
