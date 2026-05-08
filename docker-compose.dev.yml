@@ -6,6 +6,8 @@ services:
     restart: unless-stopped
     ports:
       - '${BACKEND_PORT:-3000}:${PORT:-3000}'
+    networks:
+      - dokploy-network
     environment:
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT:-3000}
@@ -13,3 +15,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
       CORS_ORIGINS: ${CORS_ORIGINS}
+
+networks:
+    dokploy-network:
+      external: true
