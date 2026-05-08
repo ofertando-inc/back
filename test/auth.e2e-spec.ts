@@ -21,9 +21,9 @@ type AuthSuccessResponse = {
 };
 
 type ErrorResponse = {
+  key: string;
   statusCode: number;
-  message: string;
-  error: string;
+  details?: Record<string, unknown>;
 };
 
 describe('Auth flow (e2e)', () => {
@@ -109,7 +109,7 @@ describe('Auth flow (e2e)', () => {
     const body = response.body as ErrorResponse;
 
     expect(response.status).toBe(401);
-    expect(body.message).toBe('Invalid credentials');
+    expect(body.key).toBe('auth.invalid_credentials');
   });
 
   it('rejects duplicate email registration', async () => {
@@ -129,7 +129,7 @@ describe('Auth flow (e2e)', () => {
     const body = response.body as ErrorResponse;
 
     expect(response.status).toBe(400);
-    expect(body.message).toBe('Email is already registered');
+    expect(body.key).toBe('user.email_taken');
   });
 
   it('rejects duplicate username registration', async () => {
@@ -149,7 +149,7 @@ describe('Auth flow (e2e)', () => {
     const body = response.body as ErrorResponse;
 
     expect(response.status).toBe(400);
-    expect(body.message).toBe('Username is already registered');
+    expect(body.key).toBe('user.username_taken');
   });
 
   it('allows access to a protected route with a valid JWT', async () => {

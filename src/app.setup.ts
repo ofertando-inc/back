@@ -1,6 +1,9 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 
+import { AppExceptionFilter } from './common/filters/app-exception.filter';
+import { validationExceptionFactory } from './common/validation/validation-exception.factory';
+
 export function configureApp(app: INestApplication) {
   app.use(helmet());
 
@@ -14,11 +17,14 @@ export function configureApp(app: INestApplication) {
     });
   }
 
+  app.useGlobalFilters(new AppExceptionFilter());
+
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
       whitelist: true,
       forbidNonWhitelisted: true,
+      exceptionFactory: validationExceptionFactory,
     }),
   );
 
