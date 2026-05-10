@@ -17,8 +17,10 @@
 - Added PostgreSQL service support in CI for e2e tests
 - Added Docker Compose support for the local backend and PostgreSQL database
 - Added a versioned docker-compose.dev.yml for the Dokploy dev environment
+- Added a versioned docker-compose.staging.yml for the Dokploy staging environment
 - Added a Docker entrypoint that runs Prisma migrate deploy before starting the application
 - Added a deploy-dev GitHub Actions workflow that builds the image, pushes it to GHCR, and triggers a Dokploy redeploy
+- Added a deploy-staging GitHub Actions workflow that promotes the dev image to staging on version tag pushes
 - Added Helmet to set HTTP security headers on every response
 - Added a global request rate limit and stricter throttling on authentication endpoints
 - Added a structured error response contract with a stable `key` field and a global exception filter that maps validation, Prisma, and HTTP errors to that contract
