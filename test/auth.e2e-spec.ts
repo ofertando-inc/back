@@ -96,7 +96,7 @@ describe('Auth flow (e2e)', () => {
       });
     const body = response.body as AuthSuccessResponse;
 
-    expect([200, 201]).toContain(response.status);
+    expect(response.status).toBe(200);
     expect(body.accessToken).toEqual(expect.any(String));
     expect(body.user).toMatchObject({
       email: 'login@example.com',

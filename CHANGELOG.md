@@ -2,6 +2,7 @@
 
 ## 0.1.1
 
+- Fixed the /auth/login response status to 200 OK instead of 201 Created, aligning with REST conventions
 - Updated the local docker-compose to sync npm dependencies, regenerate the Prisma client, and apply database migrations on container start
 - Updated the local docker-compose host port mapping to track the `PORT` env variable so non-default ports stay reachable
 - Configured the local docker-compose backend service with `init: true` for proper signal handling and zombie reaping
