@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.1
+
+- Updated the local docker-compose to sync npm dependencies, regenerate the Prisma client, and apply database migrations on container start
+- Updated the local docker-compose host port mapping to track the `PORT` env variable so non-default ports stay reachable
+- Configured the local docker-compose backend service with `init: true` for proper signal handling and zombie reaping
+- Updated the deploy-dev workflow to trigger on CI completion via `workflow_run` rather than directly on push to dev
+- Updated the staging release workflow to build a versioned `:vX.Y.Z` image from the tagged commit and promote it to `:staging`, replacing the previous re-tag of the dev image
+- Updated the production deploy workflow to promote the immutable `:vX.Y.Z` image to `:prod` after validating the tag is strict semver and contained in main
+- Added tag validation in staging and production workflows: semver regex plus `git merge-base` ancestry check against `origin/main`
+- Updated Dokploy webhook calls to send a JSON payload describing the image and release identifier
+- Updated the `docker/build-push-action` to v7 across deployment workflows
+
 ## 0.1.0
 
 - Added JWT authentication with user registration and login

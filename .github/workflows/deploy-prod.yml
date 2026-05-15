@@ -1,10 +1,10 @@
-name: Deploy prod
+name: Deploy production
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to deploy to production (e.g. v0.1.0)'
+        description: 'Version tag to deploy to production, for example v0.1.1'
         required: true
         type: string
 
@@ -12,22 +12,42 @@ permissions:
   contents: read
   packages: write
 
+env:
+  IMAGE_NAME: ghcr.io/ofertando-inc/back
+
 jobs:
-  promote:
-    name: Promote dev image to prod
+  deploy:
+    name: Update production tag from existing versioned image
     runs-on: ubuntu-latest
     environment: production
 
     steps:
-      - name: Checkout repository at tag
+      - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag }}
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Resolve commit SHA from tag
-        id: sha
-        run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Validate production tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if ! printf '%s' "${RELEASE_TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Production deployments require a semantic version tag, for example v0.1.1."
+            exit 1
+          fi
+
+          git fetch origin main:refs/remotes/origin/main --tags
+          TAG_COMMIT="$(git rev-list -n 1 "${RELEASE_TAG}")"
+
+          if ! git merge-base --is-ancestor "${TAG_COMMIT}" origin/main; then
+            echo "Production tag ${RELEASE_TAG} must point to a commit contained in main."
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -36,15 +56,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - name: Verify versioned image exists
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: docker buildx imagetools inspect "${IMAGE_NAME}:${RELEASE_TAG}"
 
-      - name: Re-tag dev image as prod
+      - name: Update stable production tag from versioned image
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           docker buildx imagetools create \
-            --tag ghcr.io/ofertando-inc/back:prod \
-            --tag ghcr.io/ofertando-inc/back:prod-${{ inputs.tag }} \
-            ghcr.io/ofertando-inc/back:dev-${{ steps.sha.outputs.value }}
+            --tag "${IMAGE_NAME}:prod" \
+            "${IMAGE_NAME}:${RELEASE_TAG}"
 
-      - name: Trigger Dokploy redeploy
-        run: curl -fsS -X POST "${{ secrets.DOKPLOY_PROD_WEBHOOK_URL }}"
+      - name: Trigger Dokploy production redeploy
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          curl -fsS -X POST \
+            -H "Content-Type: application/json" \
+            --data "{\"image\":\"${IMAGE_NAME}:prod\",\"release\":\"${RELEASE_TAG}\"}" \
+            "${{ secrets.DOKPLOY_PROD_WEBHOOK_URL }}"

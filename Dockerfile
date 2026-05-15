@@ -12,8 +12,6 @@ RUN npm ci
 
 COPY . .
 
-EXPOSE 3000
-
 CMD ["npm", "run", "start:dev"]
 
 FROM base AS build
@@ -37,12 +35,10 @@ COPY prisma ./prisma
 COPY prisma.config.ts ./
 
 RUN npm ci --omit=dev \
- && npx prisma generate \
- && npm cache clean --force
+  && npx prisma generate \
+  && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
 COPY docker/entrypoint.sh ./docker/entrypoint.sh
-
-EXPOSE 3000
 
 ENTRYPOINT ["./docker/entrypoint.sh"]

@@ -4,14 +4,12 @@ on:
   push:
     branches:
       - dev
-      - staging
       - main
     tags:
       - 'v*'
   pull_request:
     branches:
       - dev
-      - staging
       - main
 
 permissions:
@@ -46,10 +44,10 @@ jobs:
       CI: true
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -64,14 +62,17 @@ jobs:
       - name: Apply database migrations
         run: npx prisma migrate deploy
 
-      - name: Run lint
+      - name: Lint
         run: npm run lint:check
 
-      - name: Run unit tests
+      - name: Unit tests
         run: npm run test -- --runInBand
 
-      - name: Run e2e tests
+      - name: E2E tests
         run: npm run test:e2e -- --runInBand
 
-      - name: Build application
+      - name: Build app
         run: npm run build
+
+      - name: Build Docker image
+        run: docker build .
