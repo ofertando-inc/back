@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Updated the local docker-compose to sync npm dependencies, regenerate the Prisma client, and apply database migrations on container start
+- Updated the local docker-compose host port mapping to track the `PORT` env variable so non-default ports stay reachable
+- Configured the local docker-compose backend service with `init: true` for proper signal handling and zombie reaping
+
 ## 0.1.0
 
 - Added JWT authentication with user registration and login
