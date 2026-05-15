@@ -1,7 +1,11 @@
-name: Deploy dev
+name: Deploy dev image
 
 on:
-  push:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
     branches:
       - dev
 
@@ -9,14 +13,20 @@ permissions:
   contents: read
   packages: write
 
+env:
+  IMAGE_NAME: ghcr.io/ofertando-inc/back
+
 jobs:
   deploy:
-    name: Build, push and trigger Dokploy
+    name: Build dev image and trigger Dokploy
     runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -29,16 +39,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: production
           push: true
           tags: |
-            ghcr.io/ofertando-inc/back:dev
-            ghcr.io/ofertando-inc/back:dev-${{ github.sha }}
+            ${{ env.IMAGE_NAME }}:dev
+            ${{ env.IMAGE_NAME }}:dev-${{ github.event.workflow_run.head_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Trigger Dokploy redeploy
-        run: curl -fsS -X POST "${{ secrets.DOKPLOY_DEV_WEBHOOK_URL }}"
+        run: |
+          curl -fsS -X POST \
+            -H "Content-Type: application/json" \
+            --data "{\"image\":\"${IMAGE_NAME}:dev\",\"commit\":\"${{ github.event.workflow_run.head_sha }}\"}" \
+            "${{ secrets.DOKPLOY_DEV_WEBHOOK_URL }}"
