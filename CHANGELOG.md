@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- Updated the dev and staging deploy workflows to run under dedicated `dev` and `staging` GitHub Environments, surfacing every deployment in the repo's Deployments tab alongside production and unlocking per-environment secrets, variables, and reviewer rules
+
 ## 0.1.1
 
 - Fixed the /auth/login response status to 200 OK instead of 201 Created, aligning with REST conventions
