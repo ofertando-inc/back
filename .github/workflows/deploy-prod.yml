@@ -1,0 +1,79 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to deploy to production, for example v0.1.1'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/ofertando-inc/back
+
+jobs:
+  deploy:
+    name: Update production tag from existing versioned image
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate production tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          if ! printf '%s' "${RELEASE_TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Production deployments require a semantic version tag, for example v0.1.1."
+            exit 1
+          fi
+
+          git fetch origin main:refs/remotes/origin/main --tags
+          TAG_COMMIT="$(git rev-list -n 1 "${RELEASE_TAG}")"
+
+          if ! git merge-base --is-ancestor "${TAG_COMMIT}" origin/main; then
+            echo "Production tag ${RELEASE_TAG} must point to a commit contained in main."
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify versioned image exists
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: docker buildx imagetools inspect "${IMAGE_NAME}:${RELEASE_TAG}"
+
+      - name: Update stable production tag from versioned image
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:prod" \
+            "${IMAGE_NAME}:${RELEASE_TAG}"
+
+      - name: Trigger Dokploy production redeploy
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          curl -fsS -X POST \
+            -H "Content-Type: application/json" \
+            --data "{\"image\":\"${IMAGE_NAME}:prod\",\"release\":\"${RELEASE_TAG}\"}" \
+            "${{ secrets.DOKPLOY_PROD_WEBHOOK_URL }}"
