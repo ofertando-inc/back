@@ -2,6 +2,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 
 import { AppExceptionFilter } from './common/filters/app-exception.filter';
+import { StripSensitiveInterceptor } from './common/interceptors/strip-sensitive.interceptor';
 import { validationExceptionFactory } from './common/validation/validation-exception.factory';
 
 export function configureApp(app: INestApplication) {
@@ -18,6 +19,8 @@ export function configureApp(app: INestApplication) {
   }
 
   app.useGlobalFilters(new AppExceptionFilter());
+
+  app.useGlobalInterceptors(new StripSensitiveInterceptor());
 
   app.useGlobalPipes(
     new ValidationPipe({

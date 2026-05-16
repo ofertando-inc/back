@@ -96,7 +96,7 @@ describe('Auth flow (e2e)', () => {
       });
     const body = response.body as AuthSuccessResponse;
 
-    expect([200, 201]).toContain(response.status);
+    expect(response.status).toBe(200);
     expect(body.accessToken).toEqual(expect.any(String));
     expect(body.user).toMatchObject({
       email: 'login@example.com',
@@ -217,6 +217,32 @@ describe('Auth flow (e2e)', () => {
       role: 'USER',
       status: 'ACTIVE',
     });
+  });
+
+  it('trims whitespace around the email and username on registration', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: '  trimmed@example.com  ',
+        username: '  trimmeduser  ',
+        password: 'password123',
+      });
+    const body = response.body as AuthSuccessResponse;
+
+    expect(response.status).toBe(201);
+    expect(body.user).toMatchObject({
+      email: 'trimmed@example.com',
+      username: 'trimmeduser',
+    });
+
+    const loginResponse = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        email: '  trimmed@example.com  ',
+        password: 'password123',
+      });
+
+    expect(loginResponse.status).toBe(200);
   });
 
   it('rejects access to a protected route without a token', async () => {
