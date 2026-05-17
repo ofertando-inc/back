@@ -7,6 +7,13 @@ export const ErrorKey = {
   UserEmailTaken: 'user.email_taken',
   UserUsernameTaken: 'user.username_taken',
 
+  OfferNotFound: 'offer.not_found',
+  OfferForbidden: 'offer.forbidden',
+  OfferInvalidDates: 'offer.invalid_dates',
+  OfferInvalidStatusTransition: 'offer.invalid_status_transition',
+
+  PaginationInvalidCursor: 'pagination.invalid_cursor',
+
   ValidationFailed: 'validation.failed',
 
   DbUniqueViolation: 'db.unique_violation',

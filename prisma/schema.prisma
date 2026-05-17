@@ -21,6 +21,7 @@ enum OfferStatus {
   REPORTED
   DISABLED
   DELETED
+  EXPIRED
 }
 
 enum VoteType {
