@@ -12,6 +12,8 @@
 - Added the `OffersModule` exporting `OffersService` and `OfferOwnerGuard` for downstream modules
 - Added the `OffersController` exposing public list/detail and authenticated create, update, soft-delete, and `GET /offers/mine` routes with owner-or-admin authorization
 - Added e2e tests covering offer creation, listing with cursor and city filters, detail lookup, owner and admin updates, forbidden access, soft-delete propagation, and the mine endpoint
+- Updated the Postman collection with an Offers folder covering list, popular, mine, create, get, update, and delete, plus an `offerId` environment variable captured from create responses
+- Updated the Postman login request assertion to expect a strict 200 OK
 - Updated the dev and staging deploy workflows to run under dedicated `dev` and `staging` GitHub Environments, surfacing every deployment in the repo's Deployments tab alongside production and unlocking per-environment secrets, variables, and reviewer rules
 
 ## 0.1.1

@@ -63,8 +63,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('login returns 200 or 201', function () {",
-                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "pm.test('login returns 200', function () {",
+                  "  pm.response.to.have.status(200);",
                   "});",
                   "",
                   "const response = pm.response.json();",
@@ -129,6 +129,278 @@
               "path": [
                 "users",
                 "me"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Offers",
+      "item": [
+        {
+          "name": "List offers (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers?limit=20&sort=date&period=all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "sort",
+                  "value": "date",
+                  "description": "date | score"
+                },
+                {
+                  "key": "period",
+                  "value": "all",
+                  "description": "all | day | week | month | year"
+                },
+                {
+                  "key": "city",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "offerType",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "",
+                  "disabled": true,
+                  "description": "opaque base64url cursor from a previous response's nextCursor"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List popular offers this week",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers?sort=score&period=week",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers"
+              ],
+              "query": [
+                {
+                  "key": "sort",
+                  "value": "score"
+                },
+                {
+                  "key": "period",
+                  "value": "week"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "List my offers",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/mine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers",
+                "mine"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create offer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('create returns 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.id) {",
+                  "  pm.environment.set('offerId', response.id);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const now = Date.now();",
+                  "const day = 24 * 60 * 60 * 1000;",
+                  "pm.variables.set('offerStartDate', new Date(now + day).toISOString());",
+                  "pm.variables.set('offerEndDate', new Date(now + 7 * day).toISOString());"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Big discount at Acme\",\n  \"description\": \"50% off on selected items this week only\",\n  \"offerType\": \"discount\",\n  \"externalUrl\": \"https://example.com/promo\",\n  \"storeName\": \"Acme Store\",\n  \"city\": \"Bogotá\",\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get offer by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers",
+                "{{offerId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update offer",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated title\",\n  \"description\": \"Updated description\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers",
+                "{{offerId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete offer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('delete returns 204', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers",
+                "{{offerId}}"
               ]
             }
           },
