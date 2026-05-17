@@ -60,11 +60,14 @@ export class OffersService {
     return this.prisma.offer.findUnique({ where: { id } });
   }
 
-  async findAll(query: ListOffersQueryDto): Promise<PaginatedResult<Offer>> {
+  async findAll(
+    query: ListOffersQueryDto,
+    options: { ownerId?: string } = {},
+  ): Promise<PaginatedResult<Offer>> {
     const sort = query.sort ?? OfferSortMode.Date;
     const limit = query.limit ?? 20;
 
-    const where = this.buildWhere(query);
+    const where = this.buildWhere(query, options);
     if (query.cursor) {
       const cursor = this.decodeOfferCursor(query.cursor, sort);
       Object.assign(where, { AND: [this.cursorWhere(cursor, sort)] });
@@ -169,10 +172,23 @@ export class OffersService {
     }
   }
 
-  private buildWhere(query: ListOffersQueryDto): Prisma.OfferWhereInput {
-    const where: Prisma.OfferWhereInput = {
-      status: query.status ?? OfferStatus.ACTIVE,
-    };
+  private buildWhere(
+    query: ListOffersQueryDto,
+    options: { ownerId?: string },
+  ): Prisma.OfferWhereInput {
+    const where: Prisma.OfferWhereInput = {};
+
+    if (query.status) {
+      where.status = query.status;
+    } else if (options.ownerId) {
+      where.status = { not: OfferStatus.DELETED };
+    } else {
+      where.status = OfferStatus.ACTIVE;
+    }
+
+    if (options.ownerId) {
+      where.createdById = options.ownerId;
+    }
 
     if (query.city) {
       where.city = query.city;

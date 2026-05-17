@@ -10,6 +10,8 @@
 - Added an `OffersService` with CRUD, soft-delete, sort-aware cursor pagination, rolling time-window filters, status protection, and date validation
 - Added an `OfferOwnerGuard` that lets offer owners and admins through and surfaces dedicated offer error keys
 - Added the `OffersModule` exporting `OffersService` and `OfferOwnerGuard` for downstream modules
+- Added the `OffersController` exposing public list/detail and authenticated create, update, soft-delete, and `GET /offers/mine` routes with owner-or-admin authorization
+- Added e2e tests covering offer creation, listing with cursor and city filters, detail lookup, owner and admin updates, forbidden access, soft-delete propagation, and the mine endpoint
 - Updated the dev and staging deploy workflows to run under dedicated `dev` and `staging` GitHub Environments, surfacing every deployment in the repo's Deployments tab alongside production and unlocking per-environment secrets, variables, and reviewer rules
 
 ## 0.1.1
