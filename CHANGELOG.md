@@ -2,6 +2,8 @@
 
 ## 0.2.0
 
+- Added the `EXPIRED` offer status to support future expiration handling
+- Added offer and pagination error keys (`offer.not_found`, `offer.forbidden`, `offer.invalid_dates`, `offer.invalid_status_transition`, `pagination.invalid_cursor`)
 - Updated the dev and staging deploy workflows to run under dedicated `dev` and `staging` GitHub Environments, surfacing every deployment in the repo's Deployments tab alongside production and unlocking per-environment secrets, variables, and reviewer rules
 
 ## 0.1.1
