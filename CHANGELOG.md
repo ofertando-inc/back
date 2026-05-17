@@ -6,6 +6,7 @@
 - Added offer and pagination error keys (`offer.not_found`, `offer.forbidden`, `offer.invalid_dates`, `offer.invalid_status_transition`, `pagination.invalid_cursor`)
 - Added offer DTOs for creating, partially updating, and querying offers with cursor pagination and sort/filter inputs
 - Added a reusable base64url cursor encode/decode helper for sort-aware cursor pagination
+- Added an abstract `OwnerGuard` base class that grants access to admins and resource owners while throwing configurable error keys for missing or foreign resources
 - Updated the dev and staging deploy workflows to run under dedicated `dev` and `staging` GitHub Environments, surfacing every deployment in the repo's Deployments tab alongside production and unlocking per-environment secrets, variables, and reviewer rules
 
 ## 0.1.1
