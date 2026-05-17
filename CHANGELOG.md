@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0
+
+- Added the `EXPIRED` offer status to support future expiration handling
+- Added offer and pagination error keys (`offer.not_found`, `offer.forbidden`, `offer.invalid_dates`, `offer.invalid_status_transition`, `pagination.invalid_cursor`)
+- Added offer DTOs for creating, partially updating, and querying offers with cursor pagination and sort/filter inputs
+- Added a reusable base64url cursor encode/decode helper for sort-aware cursor pagination
+- Added an abstract `OwnerGuard` base class that grants access to admins and resource owners while throwing configurable error keys for missing or foreign resources
+- Added an `OffersService` with CRUD, soft-delete, sort-aware cursor pagination, rolling time-window filters, status protection, and date validation
+- Added an `OfferOwnerGuard` that lets offer owners and admins through and surfaces dedicated offer error keys
+- Added the `OffersModule` exporting `OffersService` and `OfferOwnerGuard` for downstream modules
+- Added the `OffersController` exposing public list/detail and authenticated create, update, soft-delete, and `GET /offers/mine` routes with owner-or-admin authorization
+- Added e2e tests covering offer creation, listing with cursor and city filters, detail lookup, owner and admin updates, forbidden access, soft-delete propagation, and the mine endpoint
+- Updated the Postman collection with an Offers folder covering list, popular, mine, create, get, update, and delete, plus an `offerId` environment variable captured from create responses
+- Updated the Postman login request assertion to expect a strict 200 OK
+- Updated the dev and staging deploy workflows to run under dedicated `dev` and `staging` GitHub Environments, surfacing every deployment in the repo's Deployments tab alongside production and unlocking per-environment secrets, variables, and reviewer rules
+
 ## 0.1.1
 
 - Fixed the /auth/login response status to 200 OK instead of 201 Created, aligning with REST conventions

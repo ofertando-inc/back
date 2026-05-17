@@ -18,6 +18,7 @@ jobs:
   release:
     name: Build versioned image and update staging tag
     runs-on: ubuntu-latest
+    environment: staging
     if: |
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
