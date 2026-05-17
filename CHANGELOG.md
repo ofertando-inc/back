@@ -7,6 +7,9 @@
 - Added offer DTOs for creating, partially updating, and querying offers with cursor pagination and sort/filter inputs
 - Added a reusable base64url cursor encode/decode helper for sort-aware cursor pagination
 - Added an abstract `OwnerGuard` base class that grants access to admins and resource owners while throwing configurable error keys for missing or foreign resources
+- Added an `OffersService` with CRUD, soft-delete, sort-aware cursor pagination, rolling time-window filters, status protection, and date validation
+- Added an `OfferOwnerGuard` that lets offer owners and admins through and surfaces dedicated offer error keys
+- Added the `OffersModule` exporting `OffersService` and `OfferOwnerGuard` for downstream modules
 - Updated the dev and staging deploy workflows to run under dedicated `dev` and `staging` GitHub Environments, surfacing every deployment in the repo's Deployments tab alongside production and unlocking per-environment secrets, variables, and reviewer rules
 
 ## 0.1.1
