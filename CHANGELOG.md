@@ -13,6 +13,8 @@
 - Added a `RefreshTokensService` that issues, validates, rotates, and revokes refresh tokens, including detection of token reuse that triggers a full session wipe for the user
 - Added refresh token cookie helpers that share the access cookie security attributes but restrict the cookie path to `/auth/refresh`
 - Added `REFRESH_TOKEN_SECRET` and `REFRESH_TOKEN_EXPIRES_IN` configuration and updated the default access token lifetime to 15 minutes (refresh tokens default to 30 days)
+- Updated the authentication service to emit access and refresh token pairs on register and login, with refresh tokens signed using a separate secret and tracked by `jti` in the database
+- Added authentication service methods to refresh the token pair via rotation and to revoke the refresh token at logout
 
 ## 0.2.0
 
