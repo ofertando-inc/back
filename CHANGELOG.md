@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+- Added `cookie-parser` middleware to make incoming cookies available on the request object
+- Updated CORS configuration to allow credentials so the browser includes cookies on cross-origin requests
+
 ## 0.2.0
 
 - Added the `EXPIRED` offer status to support future expiration handling

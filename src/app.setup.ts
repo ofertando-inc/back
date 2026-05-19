@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 
 import { AppExceptionFilter } from './common/filters/app-exception.filter';
@@ -7,6 +8,7 @@ import { validationExceptionFactory } from './common/validation/validation-excep
 
 export function configureApp(app: INestApplication) {
   app.use(helmet());
+  app.use(cookieParser());
 
   const corsOrigins = getCorsOrigins();
 
@@ -15,6 +17,7 @@ export function configureApp(app: INestApplication) {
       origin: corsOrigins,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
+      credentials: true,
     });
   }
 
