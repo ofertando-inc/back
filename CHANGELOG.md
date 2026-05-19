@@ -5,6 +5,8 @@
 - Added `cookie-parser` middleware to make incoming cookies available on the request object
 - Updated CORS configuration to allow credentials so the browser includes cookies on cross-origin requests
 - Updated the JWT strategy to extract the access token from the `access_token` cookie first, falling back to the `Authorization: Bearer` header
+- Added a cookie option helper that builds HttpOnly, SameSite=Lax cookie attributes, with `Secure` and `Domain` driven by the `COOKIE_SECURE` and `COOKIE_DOMAIN` environment variables, and `maxAge` aligned with `JWT_EXPIRES_IN`
+- Updated `POST /auth/register` and `POST /auth/login` to set the access token as an HttpOnly cookie and return only the public user payload, removing `accessToken` from the response body
 
 ## 0.2.0
 

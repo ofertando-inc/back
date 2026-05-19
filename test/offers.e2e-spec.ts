@@ -20,6 +20,16 @@ type RegisteredUser = {
   };
 };
 
+function extractAccessTokenCookie(setCookieHeader: unknown): string {
+  const cookies = Array.isArray(setCookieHeader)
+    ? (setCookieHeader as string[])
+    : typeof setCookieHeader === 'string'
+      ? [setCookieHeader]
+      : [];
+  const cookie = cookies.find((c) => c.startsWith('access_token='));
+  return cookie?.split(';')[0]?.split('=')[1] ?? '';
+}
+
 type OfferBody = {
   id: string;
   title: string;
@@ -85,7 +95,10 @@ describe('Offers flow (e2e)', () => {
     const response = await request(app.getHttpServer())
       .post('/auth/register')
       .send({ email, username, password: 'password123' });
-    return response.body as RegisteredUser;
+    return {
+      accessToken: extractAccessTokenCookie(response.headers['set-cookie']),
+      user: response.body as RegisteredUser['user'],
+    };
   }
 
   async function registerAdmin(

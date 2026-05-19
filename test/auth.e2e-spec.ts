@@ -8,17 +8,26 @@ import { configureApp } from '../src/app.setup';
 import { resetTestDatabase } from './test-db';
 
 type AuthSuccessResponse = {
-  accessToken: string;
-  user: {
-    id: string;
-    email: string;
-    username: string;
-    role: string;
-    status: string;
-    createdAt: string;
-    updatedAt: string;
-  };
+  id: string;
+  email: string;
+  username: string;
+  role: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
 };
+
+function extractAccessTokenCookie(setCookieHeader: unknown): string | null {
+  const cookies = Array.isArray(setCookieHeader)
+    ? (setCookieHeader as string[])
+    : typeof setCookieHeader === 'string'
+      ? [setCookieHeader]
+      : [];
+  const cookie = cookies.find((c) => c.startsWith('access_token='));
+  if (!cookie) return null;
+  const value = cookie.split(';')[0]?.split('=')[1];
+  return value && value.length > 0 ? value : null;
+}
 
 type ErrorResponse = {
   key: string;
@@ -60,7 +69,7 @@ describe('Auth flow (e2e)', () => {
     await app.close();
   });
 
-  it('registers a user with valid data', async () => {
+  it('registers a user with valid data and sets the access_token cookie', async () => {
     const response = await request(app.getHttpServer())
       .post('/auth/register')
       .send({
@@ -71,17 +80,20 @@ describe('Auth flow (e2e)', () => {
     const body = response.body as AuthSuccessResponse;
 
     expect(response.status).toBe(201);
-    expect(body.accessToken).toEqual(expect.any(String));
-    expect(body.user).toMatchObject({
+    expect(extractAccessTokenCookie(response.headers['set-cookie'])).toEqual(
+      expect.any(String),
+    );
+    expect(body).toMatchObject({
       email: 'maria@example.com',
       username: 'maria123',
       role: 'USER',
       status: 'ACTIVE',
     });
-    expect(body.user).not.toHaveProperty('passwordHash');
+    expect(body).not.toHaveProperty('passwordHash');
+    expect(body).not.toHaveProperty('accessToken');
   });
 
-  it('logs in with valid credentials', async () => {
+  it('logs in with valid credentials and sets the access_token cookie', async () => {
     await registerUser({
       email: 'login@example.com',
       username: 'loginuser',
@@ -97,8 +109,10 @@ describe('Auth flow (e2e)', () => {
     const body = response.body as AuthSuccessResponse;
 
     expect(response.status).toBe(200);
-    expect(body.accessToken).toEqual(expect.any(String));
-    expect(body.user).toMatchObject({
+    expect(extractAccessTokenCookie(response.headers['set-cookie'])).toEqual(
+      expect.any(String),
+    );
+    expect(body).toMatchObject({
       email: 'login@example.com',
       username: 'loginuser',
       role: 'USER',
@@ -198,17 +212,20 @@ describe('Auth flow (e2e)', () => {
     expect(roleField?.constraints).toContain('whitelistValidation');
   });
 
-  it('allows access to a protected route with a valid JWT', async () => {
+  it('allows access to a protected route with the cookie set by register', async () => {
     const registerResponse = await registerUser({
       email: 'protected@example.com',
       username: 'protecteduser',
       password: 'password123',
     });
-    const registerBody = registerResponse.body as AuthSuccessResponse;
 
+    const setCookieRaw = registerResponse.headers['set-cookie'] as unknown as
+      | string
+      | string[];
+    const cookies = Array.isArray(setCookieRaw) ? setCookieRaw : [setCookieRaw];
     const response = await request(app.getHttpServer())
       .get('/users/me')
-      .set('Authorization', `Bearer ${registerBody.accessToken}`);
+      .set('Cookie', cookies);
 
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
@@ -230,7 +247,7 @@ describe('Auth flow (e2e)', () => {
     const body = response.body as AuthSuccessResponse;
 
     expect(response.status).toBe(201);
-    expect(body.user).toMatchObject({
+    expect(body).toMatchObject({
       email: 'trimmed@example.com',
       username: 'trimmeduser',
     });
