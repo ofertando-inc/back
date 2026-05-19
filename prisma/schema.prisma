@@ -47,11 +47,29 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  offers  Offer[]
-  votes   Vote[]
-  reports Report[]
+  offers        Offer[]
+  votes         Vote[]
+  reports       Report[]
+  refreshTokens RefreshToken[]
 
   @@map("users")
+}
+
+model RefreshToken {
+  id           String    @id
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  replacedById String?       @unique
+  replacedBy   RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id])
+  predecessor  RefreshToken? @relation("TokenRotation")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 model Offer {

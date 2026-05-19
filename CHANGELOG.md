@@ -9,6 +9,8 @@
 - Updated `POST /auth/register` and `POST /auth/login` to set the access token as an HttpOnly cookie and return only the public user payload, removing `accessToken` from the response body
 - Added `POST /auth/logout` that clears the `access_token` cookie and returns 204 No Content
 - Updated the Postman collection to rely on the automatic cookie jar (no `Authorization` header) and added a Logout request; removed the now-unused `accessToken` environment variable
+- Added the `RefreshToken` model and migration to track refresh token lifecycle (rotation, revocation, reuse detection)
+- Added a `RefreshTokensService` that issues, validates, rotates, and revokes refresh tokens, including detection of token reuse that triggers a full session wipe for the user
 
 ## 0.2.0
 
