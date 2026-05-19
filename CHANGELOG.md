@@ -18,6 +18,7 @@
 - Updated `POST /auth/register` and `POST /auth/login` to set both the `access_token` and `refresh_token` cookies
 - Added `POST /auth/refresh` that rotates the refresh token, issues a new access cookie pair, and returns the current user
 - Updated `POST /auth/logout` to revoke the refresh token in the database before clearing both cookies
+- Added e2e tests covering the refresh endpoint, token rotation, reuse-detection-triggered multi-session revocation, and logout-driven refresh token revocation
 
 ## 0.2.0
 
