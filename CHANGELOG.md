@@ -19,6 +19,8 @@
 - Added `POST /auth/refresh` that rotates the refresh token, issues a new access cookie pair, and returns the current user
 - Updated `POST /auth/logout` to revoke the refresh token in the database before clearing both cookies
 - Added e2e tests covering the refresh endpoint, token rotation, reuse-detection-triggered multi-session revocation, and logout-driven refresh token revocation
+- Updated the refresh token cookie path to `/auth` so the browser also sends the cookie on `/auth/logout`, enabling proper server-side revocation at logout
+- Updated the Postman collection with a Refresh request that rotates the cookies, and updated the collection description to document the two-cookie auth flow
 
 ## 0.2.0
 

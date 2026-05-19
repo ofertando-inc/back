@@ -89,7 +89,7 @@ describe('cookie.helper', () => {
   describe('buildRefreshTokenCookieOptions', () => {
     it('uses path=/auth/refresh and the refresh expiry from config', () => {
       const options = buildRefreshTokenCookieOptions(configWith('30d'));
-      expect(options.path).toBe('/auth/refresh');
+      expect(options.path).toBe('/auth');
       expect(options.maxAge).toBe(30 * 24 * 60 * 60 * 1000);
       expect(options.httpOnly).toBe(true);
       expect(options.sameSite).toBe('lax');
@@ -113,7 +113,7 @@ describe('cookie.helper', () => {
     it('mirrors the refresh token options but forces maxAge to 0', () => {
       const options = buildClearRefreshTokenCookieOptions(configWith('30d'));
       expect(options.maxAge).toBe(0);
-      expect(options.path).toBe('/auth/refresh');
+      expect(options.path).toBe('/auth');
     });
   });
 });
