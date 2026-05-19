@@ -15,6 +15,9 @@
 - Added `REFRESH_TOKEN_SECRET` and `REFRESH_TOKEN_EXPIRES_IN` configuration and updated the default access token lifetime to 15 minutes (refresh tokens default to 30 days)
 - Updated the authentication service to emit access and refresh token pairs on register and login, with refresh tokens signed using a separate secret and tracked by `jti` in the database
 - Added authentication service methods to refresh the token pair via rotation and to revoke the refresh token at logout
+- Updated `POST /auth/register` and `POST /auth/login` to set both the `access_token` and `refresh_token` cookies
+- Added `POST /auth/refresh` that rotates the refresh token, issues a new access cookie pair, and returns the current user
+- Updated `POST /auth/logout` to revoke the refresh token in the database before clearing both cookies
 
 ## 0.2.0
 
