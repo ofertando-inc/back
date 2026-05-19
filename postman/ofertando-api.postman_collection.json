@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "7b46a022-8af5-407d-bc0e-42f2a6bd0ad1",
     "name": "Ofertando Api",
-    "description": "",
+    "description": "Authentication is cookie-based (HttpOnly `access_token`). Postman handles the cookie jar automatically. No Authorization header needed on authenticated requests.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -21,11 +21,10 @@
                   "  pm.response.to.have.status(201);",
                   "});",
                   "",
-                  "const response = pm.response.json();",
-                  "",
-                  "if (response.accessToken) {",
-                  "  pm.environment.set('accessToken', response.accessToken);",
-                  "}"
+                  "pm.test('access_token cookie is set', function () {",
+                  "  const cookie = pm.cookies.get('access_token');",
+                  "  pm.expect(cookie).to.be.a('string').and.not.empty;",
+                  "});"
                 ]
               }
             }
@@ -67,11 +66,10 @@
                   "  pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "const response = pm.response.json();",
-                  "",
-                  "if (response.accessToken) {",
-                  "  pm.environment.set('accessToken', response.accessToken);",
-                  "}"
+                  "pm.test('access_token cookie is set', function () {",
+                  "  const cookie = pm.cookies.get('access_token');",
+                  "  pm.expect(cookie).to.be.a('string').and.not.empty;",
+                  "});"
                 ]
               }
             }
@@ -100,6 +98,37 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('logout returns 204', function () {",
+                  "  pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
         }
       ]
     },
@@ -109,16 +138,6 @@
         {
           "name": "Users Me",
           "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{accessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "GET",
             "header": [],
             "url": {
@@ -218,16 +237,6 @@
         {
           "name": "List my offers",
           "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{accessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "GET",
             "header": [],
             "url": {
@@ -277,16 +286,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{accessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "POST",
             "header": [
               {
@@ -331,16 +330,6 @@
         {
           "name": "Update offer",
           "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{accessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "PATCH",
             "header": [
               {
@@ -381,16 +370,6 @@
             }
           ],
           "request": {
-            "auth": {
-              "type": "bearer",
-              "bearer": [
-                {
-                  "key": "token",
-                  "value": "{{accessToken}}",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "DELETE",
             "header": [],
             "url": {
