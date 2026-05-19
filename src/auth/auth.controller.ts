@@ -13,7 +13,10 @@ import type { Response } from 'express';
 import type { PublicUser } from '../users/types/public-user.type';
 import { AuthService } from './auth.service';
 import { ACCESS_TOKEN_COOKIE_NAME } from './constants';
-import { buildAccessTokenCookieOptions } from './cookie.helper';
+import {
+  buildAccessTokenCookieOptions,
+  buildClearAccessTokenCookieOptions,
+} from './cookie.helper';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -52,5 +55,14 @@ export class AuthController {
       buildAccessTokenCookieOptions(this.configService),
     );
     return user;
+  }
+
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('logout')
+  logout(@Res({ passthrough: true }) res: Response): void {
+    res.clearCookie(
+      ACCESS_TOKEN_COOKIE_NAME,
+      buildClearAccessTokenCookieOptions(this.configService),
+    );
   }
 }

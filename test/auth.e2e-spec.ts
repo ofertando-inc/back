@@ -280,6 +280,32 @@ describe('Auth flow (e2e)', () => {
     expect(body.key).toBe('auth.unauthorized');
   });
 
+  describe('POST /auth/logout', () => {
+    it('returns 204 and instructs the browser to clear the access_token cookie', async () => {
+      const response = await request(app.getHttpServer()).post('/auth/logout');
+
+      expect(response.status).toBe(204);
+
+      const setCookieRaw = response.headers['set-cookie'] as unknown as
+        | string
+        | string[];
+      const cookies = Array.isArray(setCookieRaw)
+        ? setCookieRaw
+        : [setCookieRaw];
+      const clearCookie = cookies.find((c) => c.startsWith('access_token='));
+
+      expect(clearCookie).toBeDefined();
+      expect(clearCookie).toMatch(/^access_token=;/);
+      expect(clearCookie).toMatch(/Expires=Thu, 01 Jan 1970/i);
+    });
+
+    it('works even without an authenticated request (idempotent)', async () => {
+      const response = await request(app.getHttpServer()).post('/auth/logout');
+
+      expect(response.status).toBe(204);
+    });
+  });
+
   function registerUser(data: {
     email: string;
     username: string;
