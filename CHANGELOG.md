@@ -4,6 +4,7 @@
 
 - Added `cookie-parser` middleware to make incoming cookies available on the request object
 - Updated CORS configuration to allow credentials so the browser includes cookies on cross-origin requests
+- Updated the JWT strategy to extract the access token from the `access_token` cookie first, falling back to the `Authorization: Bearer` header
 
 ## 0.2.0
 
