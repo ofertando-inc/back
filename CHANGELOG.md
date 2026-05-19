@@ -11,6 +11,8 @@
 - Updated the Postman collection to rely on the automatic cookie jar (no `Authorization` header) and added a Logout request; removed the now-unused `accessToken` environment variable
 - Added the `RefreshToken` model and migration to track refresh token lifecycle (rotation, revocation, reuse detection)
 - Added a `RefreshTokensService` that issues, validates, rotates, and revokes refresh tokens, including detection of token reuse that triggers a full session wipe for the user
+- Added refresh token cookie helpers that share the access cookie security attributes but restrict the cookie path to `/auth/refresh`
+- Added `REFRESH_TOKEN_SECRET` and `REFRESH_TOKEN_EXPIRES_IN` configuration and updated the default access token lifetime to 15 minutes (refresh tokens default to 30 days)
 
 ## 0.2.0
 

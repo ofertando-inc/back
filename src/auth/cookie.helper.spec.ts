@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import {
   buildAccessTokenCookieOptions,
   buildClearAccessTokenCookieOptions,
+  buildClearRefreshTokenCookieOptions,
+  buildRefreshTokenCookieOptions,
 } from './cookie.helper';
 
 function configWith(expiresIn: string | number | undefined): ConfigService {
@@ -81,6 +83,37 @@ describe('cookie.helper', () => {
       expect(options.httpOnly).toBe(true);
       expect(options.sameSite).toBe('lax');
       expect(options.domain).toBe('.ofertando.co');
+    });
+  });
+
+  describe('buildRefreshTokenCookieOptions', () => {
+    it('uses path=/auth/refresh and the refresh expiry from config', () => {
+      const options = buildRefreshTokenCookieOptions(configWith('30d'));
+      expect(options.path).toBe('/auth/refresh');
+      expect(options.maxAge).toBe(30 * 24 * 60 * 60 * 1000);
+      expect(options.httpOnly).toBe(true);
+      expect(options.sameSite).toBe('lax');
+    });
+
+    it('shares the base security attributes with the access cookie', () => {
+      process.env.COOKIE_SECURE = 'true';
+      process.env.COOKIE_DOMAIN = '.ofertando.co';
+      const options = buildRefreshTokenCookieOptions(configWith('30d'));
+      expect(options.secure).toBe(true);
+      expect(options.domain).toBe('.ofertando.co');
+    });
+
+    it('defaults to 1 day when the refresh expiry is unset', () => {
+      const options = buildRefreshTokenCookieOptions(configWith(undefined));
+      expect(options.maxAge).toBe(24 * 60 * 60 * 1000);
+    });
+  });
+
+  describe('buildClearRefreshTokenCookieOptions', () => {
+    it('mirrors the refresh token options but forces maxAge to 0', () => {
+      const options = buildClearRefreshTokenCookieOptions(configWith('30d'));
+      expect(options.maxAge).toBe(0);
+      expect(options.path).toBe('/auth/refresh');
     });
   });
 });
