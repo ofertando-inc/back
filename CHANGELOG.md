@@ -8,6 +8,7 @@
 - Added a cookie option helper that builds HttpOnly, SameSite=Lax cookie attributes, with `Secure` and `Domain` driven by the `COOKIE_SECURE` and `COOKIE_DOMAIN` environment variables, and `maxAge` aligned with `JWT_EXPIRES_IN`
 - Updated `POST /auth/register` and `POST /auth/login` to set the access token as an HttpOnly cookie and return only the public user payload, removing `accessToken` from the response body
 - Added `POST /auth/logout` that clears the `access_token` cookie and returns 204 No Content
+- Updated the Postman collection to rely on the automatic cookie jar (no `Authorization` header) and added a Logout request; removed the now-unused `accessToken` environment variable
 
 ## 0.2.0
 
