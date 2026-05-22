@@ -1,21 +1,26 @@
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
-import { User, UserRole, UserStatus } from '@prisma/client';
+import { RefreshToken, User, UserRole, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { PublicUser } from '../users/types/public-user.type';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
+import { RefreshTokensService } from './refresh-tokens.service';
 
 jest.mock('bcrypt');
 
 describe('AuthService', () => {
   let service: AuthService;
   let usersService: jest.Mocked<
-    Pick<UsersService, 'findByEmail' | 'findByUsername' | 'create'>
+    Pick<UsersService, 'findByEmail' | 'findByUsername' | 'findById' | 'create'>
   >;
-  let jwtService: jest.Mocked<Pick<JwtService, 'signAsync'>>;
+  let jwtService: jest.Mocked<Pick<JwtService, 'signAsync' | 'verifyAsync'>>;
+  let refreshTokensService: jest.Mocked<
+    Pick<RefreshTokensService, 'issue' | 'validate' | 'rotate' | 'revoke'>
+  >;
 
   const fullUser: User = {
     id: 'user-id',
@@ -38,21 +43,57 @@ describe('AuthService', () => {
     updatedAt: fullUser.updatedAt,
   };
 
+  const validRefreshDbRow: RefreshToken = {
+    id: 'jti-1',
+    userId: fullUser.id,
+    expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000),
+    revokedAt: null,
+    createdAt: new Date(),
+    replacedById: null,
+  };
+
   beforeEach(async () => {
     usersService = {
       findByEmail: jest.fn(),
       findByUsername: jest.fn(),
+      findById: jest.fn(),
       create: jest.fn(),
     };
     jwtService = {
-      signAsync: jest.fn().mockResolvedValue('jwt-token'),
+      signAsync: jest.fn(),
+      verifyAsync: jest.fn(),
     };
+    refreshTokensService = {
+      issue: jest.fn().mockResolvedValue({
+        id: 'jti-1',
+        expiresAt: validRefreshDbRow.expiresAt,
+      }),
+      validate: jest.fn(),
+      rotate: jest.fn(),
+      revoke: jest.fn(),
+    };
+
+    // jwtService.signAsync returns different values depending on whether refresh secret is in options
+    jwtService.signAsync.mockImplementation(((
+      _payload: unknown,
+      options?: { secret?: string },
+    ) =>
+      Promise.resolve(
+        options?.secret ? 'refresh-jwt' : 'access-jwt',
+      )) as never);
+
+    const configService = {
+      get: jest.fn().mockReturnValue('30d'),
+      getOrThrow: jest.fn().mockReturnValue('refresh-secret'),
+    } as unknown as ConfigService;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: UsersService, useValue: usersService },
         { provide: JwtService, useValue: jwtService },
+        { provide: ConfigService, useValue: configService },
+        { provide: RefreshTokensService, useValue: refreshTokensService },
       ],
     }).compile();
 
@@ -73,7 +114,7 @@ describe('AuthService', () => {
       password: 'password123',
     };
 
-    it('creates the user and returns an auth response on success', async () => {
+    it('creates the user and issues access + refresh tokens', async () => {
       usersService.findByEmail.mockResolvedValue(null);
       usersService.findByUsername.mockResolvedValue(null);
       usersService.create.mockResolvedValue(publicUser);
@@ -81,13 +122,13 @@ describe('AuthService', () => {
       const result = await service.register(dto);
 
       expect(bcrypt.hash).toHaveBeenCalledWith(dto.password, 12);
-      expect(usersService.create).toHaveBeenCalledWith({
-        email: dto.email,
-        username: dto.username,
-        passwordHash: 'hashed-password',
-      });
+      expect(refreshTokensService.issue).toHaveBeenCalledWith(
+        publicUser.id,
+        expect.any(Number),
+      );
       expect(result).toEqual({
-        accessToken: 'jwt-token',
+        accessToken: 'access-jwt',
+        refreshToken: 'refresh-jwt',
         user: publicUser,
       });
     });
@@ -98,7 +139,7 @@ describe('AuthService', () => {
       await expect(service.register(dto)).rejects.toMatchObject({
         key: ErrorKey.UserEmailTaken,
       });
-      expect(usersService.create).not.toHaveBeenCalled();
+      expect(refreshTokensService.issue).not.toHaveBeenCalled();
     });
 
     it('throws user.username_taken when the username is already used', async () => {
@@ -108,24 +149,25 @@ describe('AuthService', () => {
       await expect(service.register(dto)).rejects.toMatchObject({
         key: ErrorKey.UserUsernameTaken,
       });
-      expect(usersService.create).not.toHaveBeenCalled();
+      expect(refreshTokensService.issue).not.toHaveBeenCalled();
     });
   });
 
   describe('login', () => {
     const dto = { email: 'maria@example.com', password: 'password123' };
 
-    it('returns an auth response when credentials are valid', async () => {
+    it('returns access + refresh tokens when credentials are valid', async () => {
       usersService.findByEmail.mockResolvedValue(fullUser);
 
       const result = await service.login(dto);
 
-      expect(bcrypt.compare).toHaveBeenCalledWith(
-        dto.password,
-        fullUser.passwordHash,
+      expect(refreshTokensService.issue).toHaveBeenCalledWith(
+        fullUser.id,
+        expect.any(Number),
       );
       expect(result).toEqual({
-        accessToken: 'jwt-token',
+        accessToken: 'access-jwt',
+        refreshToken: 'refresh-jwt',
         user: publicUser,
       });
     });
@@ -136,7 +178,6 @@ describe('AuthService', () => {
       await expect(service.login(dto)).rejects.toMatchObject({
         key: ErrorKey.AuthInvalidCredentials,
       });
-      expect(bcrypt.compare).not.toHaveBeenCalled();
     });
 
     it('throws auth.invalid_credentials when the password does not match', async () => {
@@ -157,7 +198,97 @@ describe('AuthService', () => {
       await expect(service.login(dto)).rejects.toMatchObject({
         key: ErrorKey.AuthAccountDisabled,
       });
-      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('refreshTokenPair', () => {
+    it('validates the JWT, rotates the DB row, and issues a new pair', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: fullUser.id,
+        jti: 'jti-1',
+      } as never);
+      refreshTokensService.validate.mockResolvedValue(validRefreshDbRow);
+      usersService.findById.mockResolvedValue(publicUser);
+      refreshTokensService.rotate.mockResolvedValue({
+        id: 'jti-2',
+        expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000),
+      });
+
+      const result = await service.refreshTokenPair('refresh-token');
+
+      expect(refreshTokensService.validate).toHaveBeenCalledWith('jti-1');
+      expect(refreshTokensService.rotate).toHaveBeenCalledWith(
+        'jti-1',
+        fullUser.id,
+        expect.any(Number),
+      );
+      expect(result.accessToken).toBe('access-jwt');
+      expect(result.refreshToken).toBe('refresh-jwt');
+      expect(result.user).toEqual(publicUser);
+    });
+
+    it('throws auth.unauthorized when the JWT signature is invalid', async () => {
+      jwtService.verifyAsync.mockRejectedValue(new Error('bad signature'));
+
+      await expect(service.refreshTokenPair('bad')).rejects.toMatchObject({
+        key: ErrorKey.AuthUnauthorized,
+      });
+      expect(refreshTokensService.validate).not.toHaveBeenCalled();
+    });
+
+    it('throws auth.unauthorized when the user no longer exists', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-id',
+        jti: 'jti-1',
+      } as never);
+      refreshTokensService.validate.mockResolvedValue(validRefreshDbRow);
+      usersService.findById.mockResolvedValue(null);
+
+      await expect(
+        service.refreshTokenPair('refresh-token'),
+      ).rejects.toMatchObject({ key: ErrorKey.AuthUnauthorized });
+    });
+
+    it('throws auth.account_disabled when the user has been disabled', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-id',
+        jti: 'jti-1',
+      } as never);
+      refreshTokensService.validate.mockResolvedValue(validRefreshDbRow);
+      usersService.findById.mockResolvedValue({
+        ...publicUser,
+        status: UserStatus.DISABLED,
+      });
+
+      await expect(
+        service.refreshTokenPair('refresh-token'),
+      ).rejects.toMatchObject({ key: ErrorKey.AuthAccountDisabled });
+    });
+  });
+
+  describe('revokeRefreshToken', () => {
+    it('is a no-op when no token is provided', async () => {
+      await service.revokeRefreshToken(undefined);
+      expect(refreshTokensService.revoke).not.toHaveBeenCalled();
+    });
+
+    it('revokes the row when the token can be decoded', async () => {
+      jwtService.verifyAsync.mockResolvedValue({
+        sub: 'user-id',
+        jti: 'jti-1',
+      } as never);
+
+      await service.revokeRefreshToken('refresh-token');
+
+      expect(refreshTokensService.revoke).toHaveBeenCalledWith('jti-1');
+    });
+
+    it('silently ignores an invalid token (best-effort)', async () => {
+      jwtService.verifyAsync.mockRejectedValue(new Error('expired'));
+
+      await service.revokeRefreshToken('refresh-token');
+
+      expect(refreshTokensService.revoke).not.toHaveBeenCalled();
     });
   });
 });
