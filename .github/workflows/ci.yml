@@ -41,6 +41,8 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ofertando_test?schema=public
       JWT_SECRET: test_jwt_secret
       JWT_EXPIRES_IN: 1d
+      REFRESH_TOKEN_SECRET: test_refresh_token_secret
+      REFRESH_TOKEN_EXPIRES_IN: 30d
       CI: true
 
     steps:

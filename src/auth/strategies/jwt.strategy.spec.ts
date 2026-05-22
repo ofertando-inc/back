@@ -1,12 +1,13 @@
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { UserRole, UserStatus } from '@prisma/client';
+import type { Request } from 'express';
 
 import { ErrorKey } from '../../common/exceptions/error-keys';
 import { PublicUser } from '../../users/types/public-user.type';
 import { UsersService } from '../../users/users.service';
 import { JwtPayload } from '../types/jwt-payload.type';
-import { JwtStrategy } from './jwt.strategy';
+import { cookieExtractor, JwtStrategy } from './jwt.strategy';
 
 describe('JwtStrategy', () => {
   let strategy: JwtStrategy;
@@ -69,6 +70,32 @@ describe('JwtStrategy', () => {
 
     await expect(strategy.validate(payload)).rejects.toMatchObject({
       key: ErrorKey.AuthAccountDisabled,
+    });
+  });
+
+  describe('cookieExtractor', () => {
+    function buildRequest(
+      cookies: Record<string, unknown> | undefined,
+    ): Request {
+      return { cookies } as unknown as Request;
+    }
+
+    it('returns the access_token cookie value when present', () => {
+      expect(cookieExtractor(buildRequest({ access_token: 'token-1' }))).toBe(
+        'token-1',
+      );
+    });
+
+    it('returns null when the access_token cookie is missing', () => {
+      expect(cookieExtractor(buildRequest({ other: 'noise' }))).toBeNull();
+    });
+
+    it('returns null when req.cookies is undefined', () => {
+      expect(cookieExtractor(buildRequest(undefined))).toBeNull();
+    });
+
+    it('returns null when the access_token cookie is not a string', () => {
+      expect(cookieExtractor(buildRequest({ access_token: 42 }))).toBeNull();
     });
   });
 });

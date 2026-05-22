@@ -6,6 +6,7 @@ import { StringValue } from 'ms';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { RefreshTokensService } from './refresh-tokens.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
@@ -17,13 +18,13 @@ import { JwtStrategy } from './strategies/jwt.strategy';
         secret: configService.getOrThrow<string>('jwt.secret'),
         signOptions: {
           expiresIn:
-            configService.get<StringValue>('jwt.expiresIn') ?? ('1d' as const),
+            configService.get<StringValue>('jwt.expiresIn') ?? ('15m' as const),
         },
       }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, RefreshTokensService],
   exports: [AuthService],
 })
 export class AuthModule {}
