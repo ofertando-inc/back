@@ -1,95 +1,136 @@
 # Changelog
 
-## 0.3.0
+All notable changes to this project will be documented in this file.
 
-- Added `cookie-parser` middleware to make incoming cookies available on the request object
-- Updated CORS configuration to allow credentials so the browser includes cookies on cross-origin requests
-- Updated the JWT strategy to extract the access token from the `access_token` cookie first, falling back to the `Authorization: Bearer` header
-- Added a cookie option helper that builds HttpOnly, SameSite=Lax cookie attributes, with `Secure` and `Domain` driven by the `COOKIE_SECURE` and `COOKIE_DOMAIN` environment variables, and `maxAge` aligned with `JWT_EXPIRES_IN`
-- Updated `POST /auth/register` and `POST /auth/login` to set the access token as an HttpOnly cookie and return only the public user payload, removing `accessToken` from the response body
-- Added `POST /auth/logout` that clears the `access_token` cookie and returns 204 No Content
-- Updated the Postman collection to rely on the automatic cookie jar (no `Authorization` header) and added a Logout request; removed the now-unused `accessToken` environment variable
-- Added the `RefreshToken` model and migration to track refresh token lifecycle (rotation, revocation, reuse detection)
-- Added a `RefreshTokensService` that issues, validates, rotates, and revokes refresh tokens, including detection of token reuse that triggers a full session wipe for the user
-- Added refresh token cookie helpers that share the access cookie security attributes but restrict the cookie path to `/auth/refresh`
-- Added `REFRESH_TOKEN_SECRET` and `REFRESH_TOKEN_EXPIRES_IN` configuration and updated the default access token lifetime to 15 minutes (refresh tokens default to 30 days)
-- Updated the authentication service to emit access and refresh token pairs on register and login, with refresh tokens signed using a separate secret and tracked by `jti` in the database
-- Added authentication service methods to refresh the token pair via rotation and to revoke the refresh token at logout
-- Updated `POST /auth/register` and `POST /auth/login` to set both the `access_token` and `refresh_token` cookies
-- Added `POST /auth/refresh` that rotates the refresh token, issues a new access cookie pair, and returns the current user
-- Updated `POST /auth/logout` to revoke the refresh token in the database before clearing both cookies
-- Added e2e tests covering the refresh endpoint, token rotation, reuse-detection-triggered multi-session revocation, and logout-driven refresh token revocation
-- Updated the refresh token cookie path to `/auth` so the browser also sends the cookie on `/auth/logout`, enabling proper server-side revocation at logout
-- Updated the Postman collection with a Refresh request that rotates the cookies, and updated the collection description to document the two-cookie auth flow
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.2.0
+## [0.3.0] - 2026-05-19
 
-- Added the `EXPIRED` offer status to support future expiration handling
-- Added offer and pagination error keys (`offer.not_found`, `offer.forbidden`, `offer.invalid_dates`, `offer.invalid_status_transition`, `pagination.invalid_cursor`)
-- Added offer DTOs for creating, partially updating, and querying offers with cursor pagination and sort/filter inputs
-- Added a reusable base64url cursor encode/decode helper for sort-aware cursor pagination
-- Added an abstract `OwnerGuard` base class that grants access to admins and resource owners while throwing configurable error keys for missing or foreign resources
-- Added an `OffersService` with CRUD, soft-delete, sort-aware cursor pagination, rolling time-window filters, status protection, and date validation
-- Added an `OfferOwnerGuard` that lets offer owners and admins through and surfaces dedicated offer error keys
-- Added the `OffersModule` exporting `OffersService` and `OfferOwnerGuard` for downstream modules
-- Added the `OffersController` exposing public list/detail and authenticated create, update, soft-delete, and `GET /offers/mine` routes with owner-or-admin authorization
-- Added e2e tests covering offer creation, listing with cursor and city filters, detail lookup, owner and admin updates, forbidden access, soft-delete propagation, and the mine endpoint
-- Updated the Postman collection with an Offers folder covering list, popular, mine, create, get, update, and delete, plus an `offerId` environment variable captured from create responses
-- Updated the Postman login request assertion to expect a strict 200 OK
-- Updated the dev and staging deploy workflows to run under dedicated `dev` and `staging` GitHub Environments, surfacing every deployment in the repo's Deployments tab alongside production and unlocking per-environment secrets, variables, and reviewer rules
+### Added
 
-## 0.1.1
+- `cookie-parser` middleware so incoming cookies are available on the request object.
+- Cookie option helper for HttpOnly, SameSite=Lax access-token cookies, with `Secure`, `Domain`, and `maxAge` driven by `COOKIE_SECURE`, `COOKIE_DOMAIN`, and `JWT_EXPIRES_IN`.
+- `POST /auth/logout` to clear authentication cookies and return 204 No Content.
+- `RefreshToken` model and migration to track refresh token rotation, revocation, and reuse detection.
+- `RefreshTokensService` to issue, validate, rotate, and revoke refresh tokens, including reuse detection that wipes all sessions for the affected user.
+- Refresh token cookie helpers that share the access cookie security attributes.
+- `REFRESH_TOKEN_SECRET` and `REFRESH_TOKEN_EXPIRES_IN` configuration.
+- Authentication service methods to refresh token pairs via rotation and revoke refresh tokens at logout.
+- `POST /auth/refresh` to rotate the refresh token, issue a new access cookie pair, and return the current user.
+- E2E tests covering refresh, token rotation, reuse-detection-triggered multi-session revocation, and logout-driven refresh token revocation.
 
-- Fixed the /auth/login response status to 200 OK instead of 201 Created, aligning with REST conventions
-- Added a global response interceptor that strips `passwordHash` from any response body as a defense-in-depth measure against accidental leaks
-- Fixed authentication DTOs to trim whitespace around email and username so leading or trailing spaces no longer break lookups or duplicate-detection
-- Removed an unused `ConfigService` dependency from the authentication service
-- Updated the local docker-compose to sync npm dependencies, regenerate the Prisma client, and apply database migrations on container start
-- Updated the local docker-compose host port mapping to track the `PORT` env variable so non-default ports stay reachable
-- Configured the local docker-compose backend service with `init: true` for proper signal handling and zombie reaping
-- Updated the deploy-dev workflow to trigger on CI completion via `workflow_run` rather than directly on push to dev
-- Updated the staging release workflow to build a versioned `:vX.Y.Z` image from the tagged commit and promote it to `:staging`, replacing the previous re-tag of the dev image
-- Updated the production deploy workflow to promote the immutable `:vX.Y.Z` image to `:prod` after validating the tag is strict semver and contained in main
-- Added tag validation in staging and production workflows: semver regex plus `git merge-base` ancestry check against `origin/main`
-- Updated Dokploy webhook calls to send a JSON payload describing the image and release identifier
-- Updated the `docker/build-push-action` to v7 across deployment workflows
+### Changed
 
-## 0.1.0
+- CORS configuration now allows credentials so browsers include cookies on cross-origin requests.
+- JWT strategy now extracts the access token from the `access_token` cookie first, falling back to the `Authorization: Bearer` header.
+- `POST /auth/register` and `POST /auth/login` now set authentication cookies and return only the public user payload.
+- Authentication service now emits access and refresh token pairs on register and login, with refresh tokens signed by a separate secret and tracked by `jti` in the database.
+- `POST /auth/logout` now revokes the refresh token in the database before clearing cookies.
+- Refresh token cookie path is now `/auth`, allowing the browser to send it to `/auth/logout` for server-side revocation.
+- Default access token lifetime is now 15 minutes, with refresh tokens defaulting to 30 days.
+- Postman collection now relies on the automatic cookie jar, includes Logout and Refresh requests, and documents the two-cookie auth flow.
+- Docker Compose files for local, dev, staging, and production now pass `REFRESH_TOKEN_SECRET`, `REFRESH_TOKEN_EXPIRES_IN`, `COOKIE_SECURE`, and `COOKIE_DOMAIN` to the backend container.
 
-- Added JWT authentication with user registration and login
-- Added the protected `GET /users/me` endpoint for retrieving the authenticated user
-- Added Prisma models and the initial PostgreSQL migration for users, offers, votes, and reports
-- Added a Postman collection and local environment for manual API testing
-- Added a project README with setup, database, testing, CI, and deployment notes
-- Added authentication e2e tests covering registration, login, duplicate credentials, and protected route access
-- Added unit tests for the global exception filter and the validation exception factory
-- Added unit tests for the authentication service and the JWT strategy
-- Added e2e tests covering the structured error contract for validation failures, unknown fields, and protected routes
-- Added a GitHub Actions CI workflow for the `dev` branch
-- Added CI validation for dependency installation, Prisma generation, database migrations, linting, unit tests, e2e tests, and build
-- Added CI validation for `dev`, `staging`, `main`, and version tags
-- Added PostgreSQL service support in CI for e2e tests
-- Added Docker Compose support for the local backend and PostgreSQL database
-- Added a versioned docker-compose.dev.yml for the Dokploy dev environment
-- Added a versioned docker-compose.staging.yml for the Dokploy staging environment
-- Added a versioned docker-compose.prod.yml for the Dokploy production environment
-- Added a Docker entrypoint that runs Prisma migrate deploy before starting the application
-- Added a deploy-dev GitHub Actions workflow that builds the image, pushes it to GHCR, and triggers a Dokploy redeploy
-- Added a deploy-staging GitHub Actions workflow that promotes the dev image to staging on version tag pushes
-- Added a deploy-prod GitHub Actions workflow that promotes the dev image to production via manual dispatch with required reviewer approval
-- Added Helmet to set HTTP security headers on every response
-- Added a global request rate limit and stricter throttling on authentication endpoints
-- Added a structured error response contract with a stable `key` field and a global exception filter that maps validation, Prisma, and HTTP errors to that contract
-- Updated the authentication service to raise structured errors that expose stable error keys to clients
-- Updated the JWT strategy to raise structured errors that expose stable error keys to clients
-- Configured the application to use the standard Prisma Client from `@prisma/client`
-- Configured CORS origins through the `CORS_ORIGINS` environment variable
-- Configured the Prisma CLI as a runtime dependency so the production image can run migrations on boot
-- Configured the global ValidationPipe to reject requests that contain unknown fields
-- Updated the production start command to use the generated NestJS output path
-- Updated the backend runtime target to Node.js 24
-- Updated the production Docker stage to copy the Prisma schema and generate the client against production dependencies
-- Replaced the default NestJS starter root route with a backend health response
-- Fixed Prisma Client generation before builds
-- Fixed the production entrypoint used by deployed containers
-- Fixed frontend browser access by enabling configured CORS origins
+### Removed
+
+- `accessToken` from the `POST /auth/register` and `POST /auth/login` response bodies.
+- Unused `accessToken` Postman environment variable.
+
+## [0.2.0] - 2026-05-17
+
+### Added
+
+- `EXPIRED` offer status to support future expiration handling.
+- Offer and pagination error keys: `offer.not_found`, `offer.forbidden`, `offer.invalid_dates`, `offer.invalid_status_transition`, and `pagination.invalid_cursor`.
+- Offer DTOs for create, partial update, and cursor-paginated queries with sort and filter inputs.
+- Reusable base64url cursor encode/decode helper for sort-aware cursor pagination.
+- Abstract `OwnerGuard` base class that grants access to admins and resource owners while throwing configurable error keys for missing or foreign resources.
+- `OffersService` with CRUD, soft-delete, sort-aware cursor pagination, rolling time-window filters, status protection, and date validation.
+- `OfferOwnerGuard` for owner-or-admin offer authorization with dedicated offer error keys.
+- `OffersModule` exporting `OffersService` and `OfferOwnerGuard` for downstream modules.
+- `OffersController` exposing public list/detail routes and authenticated create, update, soft-delete, and `GET /offers/mine` routes.
+- E2E tests covering offer creation, cursor and city filters, detail lookup, owner and admin updates, forbidden access, soft-delete propagation, and the mine endpoint.
+
+### Changed
+
+- Postman collection now includes an Offers folder covering list, popular, mine, create, get, update, and delete requests.
+- Postman offer creation now captures an `offerId` environment variable for follow-up requests.
+- Postman login request assertion now expects strict 200 OK.
+- Dev and staging deploy workflows now run under dedicated `dev` and `staging` GitHub Environments, making deployments visible in the Deployments tab and enabling per-environment secrets, variables, and reviewer rules.
+
+## [0.1.1] - 2026-05-16
+
+### Added
+
+- Global response interceptor that strips `passwordHash` from response bodies as a defense-in-depth measure against accidental leaks.
+- Tag validation in staging and production workflows using strict semver regex checks and `git merge-base` ancestry checks against `origin/main`.
+
+### Changed
+
+- Local Docker Compose now syncs npm dependencies, regenerates the Prisma client, and applies database migrations on container start.
+- Local Docker Compose host port mapping now tracks the `PORT` environment variable.
+- Local Docker Compose backend service now uses `init: true` for signal handling and zombie reaping.
+- Dev deployment now triggers on CI completion via `workflow_run` instead of directly on pushes to `dev`.
+- Staging release workflow now builds a versioned `:vX.Y.Z` image from the tagged commit and promotes it to `:staging`.
+- Production deploy workflow now promotes the immutable `:vX.Y.Z` image to `:prod` after validating the tag.
+- Dokploy webhook calls now send a JSON payload describing the image and release identifier.
+- `docker/build-push-action` was upgraded to v7 across deployment workflows.
+
+### Fixed
+
+- `/auth/login` now returns 200 OK instead of 201 Created.
+- Authentication DTOs now trim whitespace around email and username so leading or trailing spaces no longer break lookups or duplicate detection.
+
+### Removed
+
+- Unused `ConfigService` dependency from the authentication service.
+
+## [0.1.0] - 2026-05-11
+
+### Added
+
+- JWT authentication with user registration and login.
+- Protected `GET /users/me` endpoint for retrieving the authenticated user.
+- Prisma models and initial PostgreSQL migration for users, offers, votes, and reports.
+- Postman collection and local environment for manual API testing.
+- Project README with setup, database, testing, CI, and deployment notes.
+- Authentication E2E tests covering registration, login, duplicate credentials, and protected route access.
+- Unit tests for the global exception filter and validation exception factory.
+- Unit tests for the authentication service and JWT strategy.
+- E2E tests covering the structured error contract for validation failures, unknown fields, and protected routes.
+- GitHub Actions CI workflow for the `dev` branch.
+- CI validation for dependency installation, Prisma generation, database migrations, linting, unit tests, E2E tests, and build.
+- CI validation for `dev`, `staging`, `main`, and version tags.
+- PostgreSQL service support in CI for E2E tests.
+- Docker Compose support for the local backend and PostgreSQL database.
+- Versioned Docker Compose files for Dokploy dev, staging, and production environments.
+- Docker entrypoint that runs `prisma migrate deploy` before starting the application.
+- Dev, staging, and production deployment workflows for GHCR image builds, environment promotion, Dokploy redeploys, and production reviewer approval.
+- Helmet HTTP security headers.
+- Global request rate limit and stricter throttling on authentication endpoints.
+- Structured error response contract with a stable `key` field.
+- Global exception filter that maps validation, Prisma, and HTTP errors to the structured error contract.
+
+### Changed
+
+- Authentication service and JWT strategy now raise structured errors with stable error keys for clients.
+- Application now uses the standard Prisma Client from `@prisma/client`.
+- CORS origins are configured through the `CORS_ORIGINS` environment variable.
+- Prisma CLI is a runtime dependency so the production image can run migrations on boot.
+- Global `ValidationPipe` now rejects requests that contain unknown fields.
+- Production start command now uses the generated NestJS output path.
+- Backend runtime target is now Node.js 24.
+- Production Docker stage now copies the Prisma schema and generates the client against production dependencies.
+- Default NestJS starter root route was replaced with a backend health response.
+
+### Fixed
+
+- Prisma Client generation now runs before builds.
+- Production container entrypoint now uses the correct runtime command.
+- Frontend browser access now works through configured CORS origins.
+
+[0.3.0]: https://github.com/ofertando-inc/back/releases/tag/v0.3.0
+[0.2.0]: https://github.com/ofertando-inc/back/releases/tag/v0.2.0
+[0.1.1]: https://github.com/ofertando-inc/back/releases/tag/v0.1.1
+[0.1.0]: https://github.com/ofertando-inc/back/releases/tag/v0.1.0
