@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `VotesService` that casts, switches, and withdraws votes inside Prisma transactions, recomputing the offer score atomically and enforcing voting only on `ACTIVE` offers
 - Added the `VotesModule` exposing `POST /offers/:offerId/votes`, `DELETE /offers/:offerId/votes`, and `GET /offers/:offerId/votes/me`, all requiring authentication
 - Registered `VotesModule` in `AppModule`
+- Added e2e tests covering vote casting, switching, idempotent re-cast, withdrawal, score aggregation across multiple users, and rejection on non-voteable offer statuses
 
 ## [0.3.0] - 2026-05-19
 
