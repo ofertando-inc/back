@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Offer, OfferStatus, Prisma } from '@prisma/client';
+import { Offer, OfferStatus, Prisma, VoteType } from '@prisma/client';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
@@ -44,6 +44,25 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     deletedAt: null,
     createdById: 'user-1',
     ...overrides,
+  };
+}
+
+type OfferWithResponseRelations = Offer & {
+  createdBy: { username: string };
+  votes?: { type: VoteType }[];
+};
+
+function buildOfferWithRelations(
+  overrides: Partial<Offer> = {},
+  relations: {
+    createdByUsername?: string;
+    votes?: { type: VoteType }[];
+  } = {},
+): OfferWithResponseRelations {
+  return {
+    ...buildOffer(overrides),
+    createdBy: { username: relations.createdByUsername ?? 'author' },
+    ...(relations.votes !== undefined && { votes: relations.votes }),
   };
 }
 
@@ -97,7 +116,9 @@ describe('OffersService', () => {
     };
 
     it('persists the offer with createdById set to the caller', async () => {
-      const expected = buildOffer();
+      const expected = buildOfferWithRelations({
+        createdById: 'user-42',
+      });
       prismaOffer.create.mockResolvedValue(expected);
 
       const result = await service.create(baseDto, 'user-42');
@@ -109,8 +130,20 @@ describe('OffersService', () => {
           endDate: new Date(futureEnd),
           createdById: 'user-42',
         }),
+        include: {
+          createdBy: { select: { username: true } },
+          votes: {
+            where: { userId: 'user-42' },
+            select: { type: true },
+            take: 1,
+          },
+        },
       });
-      expect(result).toBe(expected);
+      expect(result).toEqual({
+        ...buildOffer({ createdById: 'user-42' }),
+        createdByUsername: 'author',
+        userVote: null,
+      });
     });
 
     it('throws offer.invalid_dates when startDate is after endDate', async () => {
@@ -142,14 +175,39 @@ describe('OffersService', () => {
 
   describe('findById', () => {
     it('queries with a DELETED-exclusion filter', async () => {
-      const offer = buildOffer();
+      const offer = buildOfferWithRelations();
       prismaOffer.findFirst.mockResolvedValue(offer);
 
       await service.findById('offer-1');
 
       expect(prismaOffer.findFirst).toHaveBeenCalledWith({
         where: { id: 'offer-1', status: { not: OfferStatus.DELETED } },
+        include: { createdBy: { select: { username: true } } },
       });
+    });
+
+    it('includes the viewer vote when viewerId is provided', async () => {
+      const offer = buildOfferWithRelations(
+        {},
+        { votes: [{ type: VoteType.UP }] },
+      );
+      prismaOffer.findFirst.mockResolvedValue(offer);
+
+      const result = await service.findById('offer-1', 'viewer-1');
+
+      expect(prismaOffer.findFirst).toHaveBeenCalledWith({
+        where: { id: 'offer-1', status: { not: OfferStatus.DELETED } },
+        include: {
+          createdBy: { select: { username: true } },
+          votes: {
+            where: { userId: 'viewer-1' },
+            select: { type: true },
+            take: 1,
+          },
+        },
+      });
+      expect(result?.userVote).toBe(VoteType.UP);
+      expect(result?.createdByUsername).toBe('author');
     });
 
     it('returns null when not found', async () => {
@@ -207,13 +265,16 @@ describe('OffersService', () => {
 
     it('validates dates only when at least one date is provided', async () => {
       prismaOffer.findUnique.mockResolvedValue(buildOffer());
-      prismaOffer.update.mockResolvedValue(buildOffer({ title: 'New' }));
+      prismaOffer.update.mockResolvedValue(
+        buildOfferWithRelations({ title: 'New' }),
+      );
 
       await service.update('offer-1', { title: 'New' });
 
       expect(prismaOffer.update).toHaveBeenCalledWith({
         where: { id: 'offer-1' },
         data: { title: 'New' },
+        include: { createdBy: { select: { username: true } } },
       });
     });
 
@@ -234,9 +295,11 @@ describe('OffersService', () => {
 
     it('applies a partial update and parses date strings', async () => {
       prismaOffer.findUnique.mockResolvedValue(buildOffer());
-      prismaOffer.update.mockResolvedValue(buildOffer({ title: 'Patched' }));
+      prismaOffer.update.mockResolvedValue(
+        buildOfferWithRelations({ title: 'Patched' }),
+      );
 
-      await service.update('offer-1', {
+      const result = await service.update('offer-1', {
         title: 'Patched',
         startDate: '2099-01-01T00:00:00Z',
         endDate: '2099-12-31T00:00:00Z',
@@ -249,7 +312,10 @@ describe('OffersService', () => {
           startDate: new Date('2099-01-01T00:00:00Z'),
           endDate: new Date('2099-12-31T00:00:00Z'),
         },
+        include: { createdBy: { select: { username: true } } },
       });
+      expect(result.createdByUsername).toBe('author');
+      expect(result.userVote).toBeNull();
     });
   });
 
@@ -259,6 +325,27 @@ describe('OffersService', () => {
       await expect(service.softDelete('missing')).rejects.toMatchObject({
         key: ErrorKey.OfferNotFound,
       });
+    });
+
+    it('adds a viewer-scoped vote include when viewerId is provided', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({} as ListOffersQueryDto, {
+        viewerId: 'viewer-1',
+      });
+
+      expect(prismaOffer.findMany).toHaveBeenCalledWith(
+        objectContaining({
+          include: {
+            createdBy: { select: { username: true } },
+            votes: {
+              where: { userId: 'viewer-1' },
+              select: { type: true },
+              take: 1,
+            },
+          },
+        }),
+      );
     });
 
     it('throws offer.invalid_status_transition when already DELETED', async () => {
@@ -297,6 +384,7 @@ describe('OffersService', () => {
 
       expect(prismaOffer.findMany).toHaveBeenCalledWith({
         where: { status: OfferStatus.ACTIVE },
+        include: { createdBy: { select: { username: true } } },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 21,
       });
@@ -416,17 +504,21 @@ describe('OffersService', () => {
     });
 
     it('returns nextCursor=null when there are no more items', async () => {
-      prismaOffer.findMany.mockResolvedValue([buildOffer()]);
+      prismaOffer.findMany.mockResolvedValue([buildOfferWithRelations()]);
 
       const result = await service.findAll({ limit: 5 } as ListOffersQueryDto);
 
       expect(result.items).toHaveLength(1);
       expect(result.nextCursor).toBeNull();
+      expect(result.items[0]).toMatchObject({
+        createdByUsername: 'author',
+        userVote: null,
+      });
     });
 
     it('returns a nextCursor encoding the last item when there are more', async () => {
       const items = Array.from({ length: 3 }, (_, i) =>
-        buildOffer({
+        buildOfferWithRelations({
           id: `offer-${i + 1}`,
           createdAt: new Date(2024, 0, i + 1),
         }),

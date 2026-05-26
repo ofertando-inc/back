@@ -8,6 +8,7 @@ import { authConfig } from './config/auth.config';
 import { OffersModule } from './offers/offers.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
+import { VotesModule } from './votes/votes.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     AuthModule,
     OffersModule,
+    VotesModule,
   ],
   controllers: [AppController],
   providers: [

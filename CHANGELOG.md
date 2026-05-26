@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-26
+
+### Added
+
+- Added the `vote.offer_not_voteable` error key emitted when a vote targets an offer whose status is not `ACTIVE`
+- Added a `CreateVoteDto` validating the vote `type` against the Prisma `VoteType` enum (`UP` / `DOWN`)
+- Added a `VoteResponse` type describing the post-vote payload shape (`{ score, userVote }`)
+- Added a `VotesService` that casts, switches, and withdraws votes inside Prisma transactions, recomputing the offer score atomically and enforcing voting only on `ACTIVE` offers
+- Added the `VotesModule` exposing `POST /offers/:offerId/votes`, `DELETE /offers/:offerId/votes`, and `GET /offers/:offerId/votes/me`, all requiring authentication
+- Registered `VotesModule` in `AppModule`
+- Added e2e tests covering vote casting, switching, idempotent re-cast, withdrawal, score aggregation across multiple users, and rejection on non-voteable offer statuses
+- Updated the Postman collection with a Votes folder covering cast (UP), switch (DOWN), get my vote, and withdraw
+- Added `createdByUsername` to every Offer response payload so clients can display the author without an extra user lookup
+- Added viewer-aware `userVote` to Offer responses (`UP`, `DOWN`, or `null`) on public list/detail routes when authentication is present, while anonymous or invalid optional auth resolves to `null`
+
 ## [0.3.0] - 2026-05-19
 
 ### Added
@@ -130,6 +145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[0.4.0]: https://github.com/ofertando-inc/back/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ofertando-inc/back/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ofertando-inc/back/releases/tag/v0.2.0
 [0.1.1]: https://github.com/ofertando-inc/back/releases/tag/v0.1.1

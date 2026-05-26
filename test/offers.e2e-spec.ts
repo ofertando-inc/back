@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UserRole } from '@prisma/client';
+import { UserRole, VoteType } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -36,6 +36,8 @@ type OfferBody = {
   description: string;
   status: string;
   createdById: string;
+  createdByUsername: string;
+  userVote: 'UP' | 'DOWN' | null;
   city: string;
   offerType: string;
 };
@@ -139,6 +141,8 @@ describe('Offers flow (e2e)', () => {
         title: 'Big discount',
         status: 'ACTIVE',
         createdById: author.user.id,
+        createdByUsername: author.user.username,
+        userVote: null,
       });
     });
 
@@ -183,6 +187,10 @@ describe('Offers flow (e2e)', () => {
       expect(first.status).toBe(200);
       expect(firstBody.items).toHaveLength(2);
       expect(firstBody.nextCursor).not.toBeNull();
+      expect(firstBody.items[0]).toMatchObject({
+        createdByUsername: author.user.username,
+        userVote: null,
+      });
 
       const second = await request(app.getHttpServer()).get(
         `/offers?limit=2&cursor=${firstBody.nextCursor as string}`,
@@ -209,6 +217,47 @@ describe('Offers flow (e2e)', () => {
       expect(body.items[0].city).toBe('Medellín');
     });
 
+    it('returns the authenticated viewer vote when present', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const viewer = await registerUser('viewer@example.com', 'viewer');
+      const created = await createOfferAs(author.accessToken, {
+        title: 'Voted offer',
+      });
+
+      await request(app.getHttpServer())
+        .post(`/offers/${created.id}/votes`)
+        .set('Authorization', `Bearer ${viewer.accessToken}`)
+        .send({ type: VoteType.UP });
+
+      const response = await request(app.getHttpServer())
+        .get('/offers')
+        .set('Authorization', `Bearer ${viewer.accessToken}`);
+      const body = response.body as ListBody;
+      const listed = body.items.find((offer) => offer.id === created.id);
+
+      expect(response.status).toBe(200);
+      expect(listed).toMatchObject({
+        createdByUsername: author.user.username,
+        userVote: 'UP',
+      });
+    });
+
+    it('treats invalid optional auth as anonymous', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      await createOfferAs(author.accessToken);
+
+      const response = await request(app.getHttpServer())
+        .get('/offers')
+        .set('Authorization', 'Bearer invalid-token');
+      const body = response.body as ListBody;
+
+      expect(response.status).toBe(200);
+      expect(body.items[0]).toMatchObject({
+        createdByUsername: author.user.username,
+        userVote: null,
+      });
+    });
+
     it('rejects an invalid cursor with pagination.invalid_cursor', async () => {
       const response = await request(app.getHttpServer()).get(
         '/offers?cursor=not-a-base64-cursor',
@@ -232,6 +281,28 @@ describe('Offers flow (e2e)', () => {
 
       expect(response.status).toBe(200);
       expect(body.id).toBe(created.id);
+      expect(body.createdByUsername).toBe(author.user.username);
+      expect(body.userVote).toBeNull();
+    });
+
+    it('returns the authenticated viewer vote on detail', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const viewer = await registerUser('viewer@example.com', 'viewer');
+      const created = await createOfferAs(author.accessToken);
+
+      await request(app.getHttpServer())
+        .post(`/offers/${created.id}/votes`)
+        .set('Authorization', `Bearer ${viewer.accessToken}`)
+        .send({ type: VoteType.DOWN });
+
+      const response = await request(app.getHttpServer())
+        .get(`/offers/${created.id}`)
+        .set('Authorization', `Bearer ${viewer.accessToken}`);
+      const body = response.body as OfferBody;
+
+      expect(response.status).toBe(200);
+      expect(body.createdByUsername).toBe(author.user.username);
+      expect(body.userVote).toBe('DOWN');
     });
 
     it('returns offer.not_found for an unknown id', async () => {
@@ -258,6 +329,8 @@ describe('Offers flow (e2e)', () => {
 
       expect(response.status).toBe(200);
       expect(body.title).toBe('Updated title');
+      expect(body.createdByUsername).toBe(author.user.username);
+      expect(body.userVote).toBeNull();
     });
 
     it('lets an admin update any offer', async () => {
@@ -365,6 +438,10 @@ describe('Offers flow (e2e)', () => {
       expect(body.items.every((o) => o.createdById === author.user.id)).toBe(
         true,
       );
+      expect(body.items.every((o) => o.createdByUsername === 'author')).toBe(
+        true,
+      );
+      expect(body.items.every((o) => o.userVote === null)).toBe(true);
     });
   });
 });
