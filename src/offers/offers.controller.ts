@@ -11,12 +11,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Offer } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 import type { PaginatedResult } from '../common/pagination/paginated-result.type';
 import type { PublicUser } from '../users/types/public-user.type';
 import { CreateOfferDto } from './dto/create-offer.dto';
@@ -24,14 +24,19 @@ import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 import { UpdateOfferDto } from './dto/update-offer.dto';
 import { OfferOwnerGuard } from './guards/offer-owner.guard';
 import { OffersService } from './offers.service';
+import type { OfferResponse } from './types/offer-response.type';
 
 @Controller('offers')
 export class OffersController {
   constructor(private readonly offersService: OffersService) {}
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get()
-  list(@Query() query: ListOffersQueryDto): Promise<PaginatedResult<Offer>> {
-    return this.offersService.findAll(query);
+  list(
+    @Query() query: ListOffersQueryDto,
+    @CurrentUser() user?: PublicUser,
+  ): Promise<PaginatedResult<OfferResponse>> {
+    return this.offersService.findAll(query, { viewerId: user?.id });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -39,13 +44,20 @@ export class OffersController {
   listMine(
     @CurrentUser() user: PublicUser,
     @Query() query: ListOffersQueryDto,
-  ): Promise<PaginatedResult<Offer>> {
-    return this.offersService.findAll(query, { ownerId: user.id });
+  ): Promise<PaginatedResult<OfferResponse>> {
+    return this.offersService.findAll(query, {
+      ownerId: user.id,
+      viewerId: user.id,
+    });
   }
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Offer> {
-    const offer = await this.offersService.findById(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user?: PublicUser,
+  ): Promise<OfferResponse> {
+    const offer = await this.offersService.findById(id, user?.id);
     if (!offer) {
       throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
     }
@@ -57,14 +69,18 @@ export class OffersController {
   create(
     @CurrentUser() user: PublicUser,
     @Body() dto: CreateOfferDto,
-  ): Promise<Offer> {
+  ): Promise<OfferResponse> {
     return this.offersService.create(dto, user.id);
   }
 
   @UseGuards(JwtAuthGuard, OfferOwnerGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateOfferDto): Promise<Offer> {
-    return this.offersService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @CurrentUser() user: PublicUser,
+    @Body() dto: UpdateOfferDto,
+  ): Promise<OfferResponse> {
+    return this.offersService.update(id, dto, user.id);
   }
 
   @HttpCode(HttpStatus.NO_CONTENT)
