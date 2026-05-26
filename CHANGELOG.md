@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added the `vote.offer_not_voteable` error key emitted when a vote targets an offer whose status is not `ACTIVE`
 - Added a `CreateVoteDto` validating the vote `type` against the Prisma `VoteType` enum (`UP` / `DOWN`)
 - Added a `VoteResponse` type describing the post-vote payload shape (`{ score, userVote }`)
+- Added a `VotesService` that casts, switches, and withdraws votes inside Prisma transactions, recomputing the offer score atomically and enforcing voting only on `ACTIVE` offers
 
 ## [0.3.0] - 2026-05-19
 
