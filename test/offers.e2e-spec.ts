@@ -36,6 +36,7 @@ type OfferBody = {
   description: string;
   status: string;
   createdById: string;
+  createdByUsername: string;
   city: string;
   offerType: string;
 };
@@ -139,6 +140,7 @@ describe('Offers flow (e2e)', () => {
         title: 'Big discount',
         status: 'ACTIVE',
         createdById: author.user.id,
+        createdByUsername: author.user.username,
       });
     });
 
@@ -183,6 +185,9 @@ describe('Offers flow (e2e)', () => {
       expect(first.status).toBe(200);
       expect(firstBody.items).toHaveLength(2);
       expect(firstBody.nextCursor).not.toBeNull();
+      expect(firstBody.items[0]).toMatchObject({
+        createdByUsername: author.user.username,
+      });
 
       const second = await request(app.getHttpServer()).get(
         `/offers?limit=2&cursor=${firstBody.nextCursor as string}`,
@@ -232,6 +237,7 @@ describe('Offers flow (e2e)', () => {
 
       expect(response.status).toBe(200);
       expect(body.id).toBe(created.id);
+      expect(body.createdByUsername).toBe(author.user.username);
     });
 
     it('returns offer.not_found for an unknown id', async () => {
@@ -258,6 +264,7 @@ describe('Offers flow (e2e)', () => {
 
       expect(response.status).toBe(200);
       expect(body.title).toBe('Updated title');
+      expect(body.createdByUsername).toBe(author.user.username);
     });
 
     it('lets an admin update any offer', async () => {
@@ -363,6 +370,9 @@ describe('Offers flow (e2e)', () => {
       expect(response.status).toBe(200);
       expect(body.items).toHaveLength(2);
       expect(body.items.every((o) => o.createdById === author.user.id)).toBe(
+        true,
+      );
+      expect(body.items.every((o) => o.createdByUsername === 'author')).toBe(
         true,
       );
     });

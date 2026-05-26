@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Registered `VotesModule` in `AppModule`
 - Added e2e tests covering vote casting, switching, idempotent re-cast, withdrawal, score aggregation across multiple users, and rejection on non-voteable offer statuses
 - Updated the Postman collection with a Votes folder covering cast (UP), switch (DOWN), get my vote, and withdraw
+- Added `createdByUsername` to every Offer response payload so clients can display the author without an extra user lookup
 
 ## [0.3.0] - 2026-05-19
 
@@ -143,6 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[0.4.0]: https://github.com/ofertando-inc/back/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ofertando-inc/back/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ofertando-inc/back/releases/tag/v0.2.0
 [0.1.1]: https://github.com/ofertando-inc/back/releases/tag/v0.1.1

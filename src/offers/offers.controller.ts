@@ -11,7 +11,6 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Offer } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AppException } from '../common/exceptions/app.exception';
@@ -24,13 +23,16 @@ import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 import { UpdateOfferDto } from './dto/update-offer.dto';
 import { OfferOwnerGuard } from './guards/offer-owner.guard';
 import { OffersService } from './offers.service';
+import type { OfferResponse } from './types/offer-response.type';
 
 @Controller('offers')
 export class OffersController {
   constructor(private readonly offersService: OffersService) {}
 
   @Get()
-  list(@Query() query: ListOffersQueryDto): Promise<PaginatedResult<Offer>> {
+  list(
+    @Query() query: ListOffersQueryDto,
+  ): Promise<PaginatedResult<OfferResponse>> {
     return this.offersService.findAll(query);
   }
 
@@ -39,12 +41,12 @@ export class OffersController {
   listMine(
     @CurrentUser() user: PublicUser,
     @Query() query: ListOffersQueryDto,
-  ): Promise<PaginatedResult<Offer>> {
+  ): Promise<PaginatedResult<OfferResponse>> {
     return this.offersService.findAll(query, { ownerId: user.id });
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<Offer> {
+  async findOne(@Param('id') id: string): Promise<OfferResponse> {
     const offer = await this.offersService.findById(id);
     if (!offer) {
       throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
@@ -57,13 +59,16 @@ export class OffersController {
   create(
     @CurrentUser() user: PublicUser,
     @Body() dto: CreateOfferDto,
-  ): Promise<Offer> {
+  ): Promise<OfferResponse> {
     return this.offersService.create(dto, user.id);
   }
 
   @UseGuards(JwtAuthGuard, OfferOwnerGuard)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateOfferDto): Promise<Offer> {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateOfferDto,
+  ): Promise<OfferResponse> {
     return this.offersService.update(id, dto);
   }
 

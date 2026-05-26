@@ -18,21 +18,26 @@ import type {
   OfferCursor,
   ScoreCursor,
 } from './types/offer-cursor.type';
+import type { OfferResponse } from './types/offer-response.type';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+type OfferWithResponseRelations = Offer & {
+  createdBy: { username: string };
+};
 
 @Injectable()
 export class OffersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateOfferDto, userId: string): Promise<Offer> {
+  async create(dto: CreateOfferDto, userId: string): Promise<OfferResponse> {
     const startDate = new Date(dto.startDate);
     const endDate = new Date(dto.endDate);
 
     this.assertStartBeforeEnd(startDate, endDate);
     this.assertEndInFuture(endDate);
 
-    return this.prisma.offer.create({
+    const offer = await this.prisma.offer.create({
       data: {
         title: dto.title,
         description: dto.description,
@@ -44,16 +49,22 @@ export class OffersService {
         endDate,
         createdById: userId,
       },
+      include: this.buildOfferResponseInclude(),
     });
+
+    return this.toOfferResponse(offer);
   }
 
-  findById(id: string): Promise<Offer | null> {
-    return this.prisma.offer.findFirst({
+  async findById(id: string): Promise<OfferResponse | null> {
+    const offer = await this.prisma.offer.findFirst({
       where: {
         id,
         status: { not: OfferStatus.DELETED },
       },
+      include: this.buildOfferResponseInclude(),
     });
+
+    return offer ? this.toOfferResponse(offer) : null;
   }
 
   findRawById(id: string): Promise<Offer | null> {
@@ -63,7 +74,7 @@ export class OffersService {
   async findAll(
     query: ListOffersQueryDto,
     options: { ownerId?: string } = {},
-  ): Promise<PaginatedResult<Offer>> {
+  ): Promise<PaginatedResult<OfferResponse>> {
     const sort = query.sort ?? OfferSortMode.Date;
     const limit = query.limit ?? 20;
 
@@ -75,6 +86,7 @@ export class OffersService {
 
     const items = await this.prisma.offer.findMany({
       where,
+      include: this.buildOfferResponseInclude(),
       orderBy: this.buildOrderBy(sort),
       take: limit + 1,
     });
@@ -84,12 +96,12 @@ export class OffersService {
     const last = trimmed[trimmed.length - 1];
 
     return {
-      items: trimmed,
+      items: trimmed.map((offer) => this.toOfferResponse(offer)),
       nextCursor: hasMore && last ? this.encodeCursorFor(last, sort) : null,
     };
   }
 
-  async update(id: string, dto: UpdateOfferDto): Promise<Offer> {
+  async update(id: string, dto: UpdateOfferDto): Promise<OfferResponse> {
     const offer = await this.findRawById(id);
 
     if (!offer) {
@@ -114,7 +126,7 @@ export class OffersService {
       this.assertStartBeforeEnd(startDate, endDate);
     }
 
-    return this.prisma.offer.update({
+    const updated = await this.prisma.offer.update({
       where: { id },
       data: {
         ...(dto.title !== undefined && { title: dto.title }),
@@ -128,7 +140,10 @@ export class OffersService {
         }),
         ...(dto.endDate !== undefined && { endDate: new Date(dto.endDate) }),
       },
+      include: this.buildOfferResponseInclude(),
     });
+
+    return this.toOfferResponse(updated);
   }
 
   async softDelete(id: string): Promise<Offer> {
@@ -170,6 +185,21 @@ export class OffersService {
         HttpStatus.BAD_REQUEST,
       );
     }
+  }
+
+  private buildOfferResponseInclude(): Prisma.OfferInclude {
+    return {
+      createdBy: { select: { username: true } },
+    };
+  }
+
+  private toOfferResponse(offer: OfferWithResponseRelations): OfferResponse {
+    const { createdBy, ...payload } = offer;
+
+    return {
+      ...payload,
+      createdByUsername: createdBy.username,
+    };
   }
 
   private buildWhere(
