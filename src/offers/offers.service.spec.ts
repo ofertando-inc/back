@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Offer, OfferStatus, Prisma } from '@prisma/client';
+import { Offer, OfferStatus, Prisma, VoteType } from '@prisma/client';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
@@ -49,17 +49,20 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
 
 type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
+  votes?: { type: VoteType }[];
 };
 
 function buildOfferWithRelations(
   overrides: Partial<Offer> = {},
   relations: {
     createdByUsername?: string;
+    votes?: { type: VoteType }[];
   } = {},
 ): OfferWithResponseRelations {
   return {
     ...buildOffer(overrides),
     createdBy: { username: relations.createdByUsername ?? 'author' },
+    ...(relations.votes !== undefined && { votes: relations.votes }),
   };
 }
 
@@ -129,11 +132,17 @@ describe('OffersService', () => {
         }),
         include: {
           createdBy: { select: { username: true } },
+          votes: {
+            where: { userId: 'user-42' },
+            select: { type: true },
+            take: 1,
+          },
         },
       });
       expect(result).toEqual({
         ...buildOffer({ createdById: 'user-42' }),
         createdByUsername: 'author',
+        userVote: null,
       });
     });
 
@@ -175,6 +184,30 @@ describe('OffersService', () => {
         where: { id: 'offer-1', status: { not: OfferStatus.DELETED } },
         include: { createdBy: { select: { username: true } } },
       });
+    });
+
+    it('includes the viewer vote when viewerId is provided', async () => {
+      const offer = buildOfferWithRelations(
+        {},
+        { votes: [{ type: VoteType.UP }] },
+      );
+      prismaOffer.findFirst.mockResolvedValue(offer);
+
+      const result = await service.findById('offer-1', 'viewer-1');
+
+      expect(prismaOffer.findFirst).toHaveBeenCalledWith({
+        where: { id: 'offer-1', status: { not: OfferStatus.DELETED } },
+        include: {
+          createdBy: { select: { username: true } },
+          votes: {
+            where: { userId: 'viewer-1' },
+            select: { type: true },
+            take: 1,
+          },
+        },
+      });
+      expect(result?.userVote).toBe(VoteType.UP);
+      expect(result?.createdByUsername).toBe('author');
     });
 
     it('returns null when not found', async () => {
@@ -282,6 +315,7 @@ describe('OffersService', () => {
         include: { createdBy: { select: { username: true } } },
       });
       expect(result.createdByUsername).toBe('author');
+      expect(result.userVote).toBeNull();
     });
   });
 
@@ -291,6 +325,27 @@ describe('OffersService', () => {
       await expect(service.softDelete('missing')).rejects.toMatchObject({
         key: ErrorKey.OfferNotFound,
       });
+    });
+
+    it('adds a viewer-scoped vote include when viewerId is provided', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({} as ListOffersQueryDto, {
+        viewerId: 'viewer-1',
+      });
+
+      expect(prismaOffer.findMany).toHaveBeenCalledWith(
+        objectContaining({
+          include: {
+            createdBy: { select: { username: true } },
+            votes: {
+              where: { userId: 'viewer-1' },
+              select: { type: true },
+              take: 1,
+            },
+          },
+        }),
+      );
     });
 
     it('throws offer.invalid_status_transition when already DELETED', async () => {
@@ -457,6 +512,7 @@ describe('OffersService', () => {
       expect(result.nextCursor).toBeNull();
       expect(result.items[0]).toMatchObject({
         createdByUsername: 'author',
+        userVote: null,
       });
     });
 

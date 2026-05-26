@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added e2e tests covering vote casting, switching, idempotent re-cast, withdrawal, score aggregation across multiple users, and rejection on non-voteable offer statuses
 - Updated the Postman collection with a Votes folder covering cast (UP), switch (DOWN), get my vote, and withdraw
 - Added `createdByUsername` to every Offer response payload so clients can display the author without an extra user lookup
+- Added viewer-aware `userVote` to Offer responses (`UP`, `DOWN`, or `null`) on public list/detail routes when authentication is present, while anonymous or invalid optional auth resolves to `null`
 
 ## [0.3.0] - 2026-05-19
 

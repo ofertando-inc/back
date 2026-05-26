@@ -16,6 +16,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 import type { PaginatedResult } from '../common/pagination/paginated-result.type';
 import type { PublicUser } from '../users/types/public-user.type';
 import { CreateOfferDto } from './dto/create-offer.dto';
@@ -29,11 +30,13 @@ import type { OfferResponse } from './types/offer-response.type';
 export class OffersController {
   constructor(private readonly offersService: OffersService) {}
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get()
   list(
     @Query() query: ListOffersQueryDto,
+    @CurrentUser() user?: PublicUser,
   ): Promise<PaginatedResult<OfferResponse>> {
-    return this.offersService.findAll(query);
+    return this.offersService.findAll(query, { viewerId: user?.id });
   }
 
   @UseGuards(JwtAuthGuard)
@@ -42,12 +45,19 @@ export class OffersController {
     @CurrentUser() user: PublicUser,
     @Query() query: ListOffersQueryDto,
   ): Promise<PaginatedResult<OfferResponse>> {
-    return this.offersService.findAll(query, { ownerId: user.id });
+    return this.offersService.findAll(query, {
+      ownerId: user.id,
+      viewerId: user.id,
+    });
   }
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<OfferResponse> {
-    const offer = await this.offersService.findById(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user?: PublicUser,
+  ): Promise<OfferResponse> {
+    const offer = await this.offersService.findById(id, user?.id);
     if (!offer) {
       throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
     }
@@ -67,9 +77,10 @@ export class OffersController {
   @Patch(':id')
   update(
     @Param('id') id: string,
+    @CurrentUser() user: PublicUser,
     @Body() dto: UpdateOfferDto,
   ): Promise<OfferResponse> {
-    return this.offersService.update(id, dto);
+    return this.offersService.update(id, dto, user.id);
   }
 
   @HttpCode(HttpStatus.NO_CONTENT)
