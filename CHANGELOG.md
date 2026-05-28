@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `ModerationService` that lists offers (admin scope) and reports, disables/restores offers (with `reportCount` reset), and disables/restores users while revoking refresh sessions on disable
 - Added a `ListReportsQueryDto` and a `ReportSummary` type for the admin report listing with cursor pagination
 - Exported `RefreshTokensService` from `AuthModule` so the moderation flow can revoke sessions on user disable
+- Added the `ModerationModule` with three admin controllers: `AdminOffersController` (`GET /admin/offers`, `PATCH /admin/offers/:id/disable`, `PATCH /admin/offers/:id/restore`), `AdminUsersController` (`PATCH /admin/users/:id/disable`, `PATCH /admin/users/:id/restore`), and `AdminReportsController` (`GET /admin/reports`), all guarded by `JwtAuthGuard + AdminGuard`
+- Registered `ModerationModule` in `AppModule`
 
 ### Security
 
