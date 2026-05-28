@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Registered `ReportsModule` in `AppModule`
 - Added e2e tests covering report creation, threshold-triggered transition to `REPORTED`, idempotent re-reports, reports on already-`REPORTED` offers, rejection on non-reportable statuses, and the `GET /offers/:offerId/reports/me` endpoint
 - Updated the e2e setup and CI workflow to set `REPORT_THRESHOLD=3` for faster threshold testing
+- Updated the Postman collection with a Reports folder covering create (SCAM example with comment) and get my report, including notes on the supported reasons and the threshold trigger
 
 ## [0.4.0] - 2026-05-26
 
