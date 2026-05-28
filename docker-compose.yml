@@ -19,6 +19,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      REPORT_THRESHOLD: ${REPORT_THRESHOLD:-10}
     ports:
       - '${PORT:-3000}:${PORT:-3000}'
     volumes:

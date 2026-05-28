@@ -14,6 +14,8 @@ export const ErrorKey = {
 
   VoteOfferNotVoteable: 'vote.offer_not_voteable',
 
+  ReportOfferNotReportable: 'report.offer_not_reportable',
+
   PaginationInvalidCursor: 'pagination.invalid_cursor',
 
   ValidationFailed: 'validation.failed',

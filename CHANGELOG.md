@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added the `report.offer_not_reportable` error key emitted when a report targets an offer whose status is not `ACTIVE` or `REPORTED`
+- Added a `CreateReportDto` validating the report `reason` against the Prisma `ReportReason` enum and accepting an optional trimmed `comment` (max 1000 chars)
+- Added a `ReportResponse` type describing the post-report payload (`{ status: OfferStatus }`)
+- Added a `report.threshold` configuration loaded from the `REPORT_THRESHOLD` environment variable (default `10`)
+- Updated all docker-compose files (local, dev, staging, prod) to pass `REPORT_THRESHOLD` to the backend container
+
 ## [0.4.0] - 2026-05-26
 
 ### Added
