@@ -7,6 +7,8 @@ import { AuthModule } from './auth/auth.module';
 import { authConfig } from './config/auth.config';
 import { OffersModule } from './offers/offers.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { reportConfig } from './config/report.config';
+import { ReportsModule } from './reports/reports.module';
 import { UsersModule } from './users/users.module';
 import { VotesModule } from './votes/votes.module';
 
@@ -14,7 +16,7 @@ import { VotesModule } from './votes/votes.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [authConfig],
+      load: [authConfig, reportConfig],
     }),
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 100 }],
@@ -25,6 +27,7 @@ import { VotesModule } from './votes/votes.module';
     AuthModule,
     OffersModule,
     VotesModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [

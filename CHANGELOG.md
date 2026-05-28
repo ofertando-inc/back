@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-28
+
+### Added
+
+- Added the `report.offer_not_reportable` error key emitted when a report targets an offer whose status is not `ACTIVE` or `REPORTED`
+- Added a `CreateReportDto` validating the report `reason` against the Prisma `ReportReason` enum and accepting an optional trimmed `comment` (max 1000 chars)
+- Added a `ReportResponse` type describing the post-report payload (`{ status: OfferStatus }`)
+- Added a `report.threshold` configuration loaded from the `REPORT_THRESHOLD` environment variable (default `10`)
+- Updated all docker-compose files (local, dev, staging, prod) to pass `REPORT_THRESHOLD` to the backend container
+- Added a `ReportsService` that creates reports inside a Prisma transaction, idempotently handles duplicate user reports, atomically increments `reportCount`, and transitions the offer status to `REPORTED` once the configured threshold is reached
+- Added a `UserReportResponse` type describing the shape returned by the user-report lookup (`{ reason }`)
+- Added the `ReportsModule` exposing `POST /offers/:offerId/reports` and `GET /offers/:offerId/reports/me`, both requiring authentication
+- Registered `ReportsModule` in `AppModule`
+- Added e2e tests covering report creation, threshold-triggered transition to `REPORTED`, idempotent re-reports, reports on already-`REPORTED` offers, rejection on non-reportable statuses, and the `GET /offers/:offerId/reports/me` endpoint
+- Updated the e2e setup and CI workflow to set `REPORT_THRESHOLD=3` for faster threshold testing
+- Updated the Postman collection with a Reports folder covering create (SCAM example with comment) and get my report, including notes on the supported reasons and the threshold trigger
+
 ## [0.4.0] - 2026-05-26
 
 ### Added
@@ -145,6 +162,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[0.5.0]: https://github.com/ofertando-inc/back/releases/tag/v0.5.0
 [0.4.0]: https://github.com/ofertando-inc/back/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ofertando-inc/back/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ofertando-inc/back/releases/tag/v0.2.0
