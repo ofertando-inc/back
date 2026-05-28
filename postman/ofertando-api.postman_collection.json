@@ -591,6 +591,91 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Report offer (SCAM)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('report returns 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('response includes the offer status', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('status');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"SCAM\",\n  \"comment\": \"Looks like a phishing offer\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/reports",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "reports"
+              ]
+            },
+            "description": "reason can be one of: EXPIRED, UNAVAILABLE, INCORRECT_INFO, SCAM, OTHER. comment is optional (max 1000 chars). Once REPORT_THRESHOLD unique users report an offer, its status switches to REPORTED automatically."
+          },
+          "response": []
+        },
+        {
+          "name": "Get my report",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('returns 200 with a reason field', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.have.property('reason');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/reports/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "reports",
+                "me"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }
