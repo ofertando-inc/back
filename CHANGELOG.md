@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added the `user.not_found` (404) error key emitted when an admin operation targets a user that does not exist
+- Added the `user.invalid_status_transition` (400) error key emitted when an admin tries to disable an already-disabled user or restore an already-active user
+- Added the `AdminGuard` that grants access only to users with the `ADMIN` role, throwing `auth.forbidden` for regular users and `auth.unauthorized` when no user is attached to the request
+
 ## [0.5.0] - 2026-05-28
 
 ### Added
