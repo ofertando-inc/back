@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `ReportResponse` type describing the post-report payload (`{ status: OfferStatus }`)
 - Added a `report.threshold` configuration loaded from the `REPORT_THRESHOLD` environment variable (default `10`)
 - Updated all docker-compose files (local, dev, staging, prod) to pass `REPORT_THRESHOLD` to the backend container
+- Added a `ReportsService` that creates reports inside a Prisma transaction, idempotently handles duplicate user reports, atomically increments `reportCount`, and transitions the offer status to `REPORTED` once the configured threshold is reached
 
 ## [0.4.0] - 2026-05-26
 
