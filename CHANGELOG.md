@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added the `user.not_found` (404) error key emitted when an admin operation targets a user that does not exist
 - Added the `user.invalid_status_transition` (400) error key emitted when an admin tries to disable an already-disabled user or restore an already-active user
 - Added the `AdminGuard` that grants access only to users with the `ADMIN` role, throwing `auth.forbidden` for regular users and `auth.unauthorized` when no user is attached to the request
+- Added a `ModerationService` that lists offers (admin scope) and reports, disables/restores offers (with `reportCount` reset), and disables/restores users while revoking refresh sessions on disable
+- Added a `ListReportsQueryDto` and a `ReportSummary` type for the admin report listing with cursor pagination
+- Exported `RefreshTokensService` from `AuthModule` so the moderation flow can revoke sessions on user disable
+
+### Security
+
+- Hardened `OffersService.findAll` so the `status` query parameter is honored only for admins or owners of the listed offers — public viewers can no longer escape the `ACTIVE` filter by passing `?status=`
 
 ## [0.5.0] - 2026-05-28
 

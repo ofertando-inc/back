@@ -390,16 +390,31 @@ describe('OffersService', () => {
       });
     });
 
-    it('honors a custom status filter (admin path)', async () => {
+    it('honors a custom status filter when called with admin: true', async () => {
       prismaOffer.findMany.mockResolvedValue([]);
 
-      await service.findAll({
-        status: OfferStatus.REPORTED,
-      } as ListOffersQueryDto);
+      await service.findAll(
+        { status: OfferStatus.REPORTED } as ListOffersQueryDto,
+        { admin: true },
+      );
 
       expect(prismaOffer.findMany).toHaveBeenCalledWith(
         objectContaining({
           where: { status: OfferStatus.REPORTED },
+        }),
+      );
+    });
+
+    it('ignores a status query param from anonymous callers (security)', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({
+        status: OfferStatus.DELETED,
+      } as ListOffersQueryDto);
+
+      expect(prismaOffer.findMany).toHaveBeenCalledWith(
+        objectContaining({
+          where: { status: OfferStatus.ACTIVE },
         }),
       );
     });

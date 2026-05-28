@@ -74,7 +74,7 @@ export class OffersService {
 
   async findAll(
     query: ListOffersQueryDto,
-    options: { ownerId?: string; viewerId?: string } = {},
+    options: { ownerId?: string; viewerId?: string; admin?: boolean } = {},
   ): Promise<PaginatedResult<OfferResponse>> {
     const sort = query.sort ?? OfferSortMode.Date;
     const limit = query.limit ?? 20;
@@ -220,11 +220,11 @@ export class OffersService {
 
   private buildWhere(
     query: ListOffersQueryDto,
-    options: { ownerId?: string },
+    options: { ownerId?: string; admin?: boolean },
   ): Prisma.OfferWhereInput {
     const where: Prisma.OfferWhereInput = {};
 
-    if (query.status) {
+    if (query.status && (options.admin || options.ownerId)) {
       where.status = query.status;
     } else if (options.ownerId) {
       where.status = { not: OfferStatus.DELETED };
