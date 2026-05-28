@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `report.threshold` configuration loaded from the `REPORT_THRESHOLD` environment variable (default `10`)
 - Updated all docker-compose files (local, dev, staging, prod) to pass `REPORT_THRESHOLD` to the backend container
 - Added a `ReportsService` that creates reports inside a Prisma transaction, idempotently handles duplicate user reports, atomically increments `reportCount`, and transitions the offer status to `REPORTED` once the configured threshold is reached
+- Added a `UserReportResponse` type describing the shape returned by the user-report lookup (`{ reason }`)
+- Added the `ReportsModule` exposing `POST /offers/:offerId/reports` and `GET /offers/:offerId/reports/me`, both requiring authentication
+- Registered `ReportsModule` in `AppModule`
 
 ## [0.4.0] - 2026-05-26
 
