@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `UserReportResponse` type describing the shape returned by the user-report lookup (`{ reason }`)
 - Added the `ReportsModule` exposing `POST /offers/:offerId/reports` and `GET /offers/:offerId/reports/me`, both requiring authentication
 - Registered `ReportsModule` in `AppModule`
+- Added e2e tests covering report creation, threshold-triggered transition to `REPORTED`, idempotent re-reports, reports on already-`REPORTED` offers, rejection on non-reportable statuses, and the `GET /offers/:offerId/reports/me` endpoint
+- Updated the e2e setup and CI workflow to set `REPORT_THRESHOLD=3` for faster threshold testing
 
 ## [0.4.0] - 2026-05-26
 
