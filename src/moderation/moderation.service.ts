@@ -205,7 +205,9 @@ export class ModerationService {
     offerId: string,
     viewerId: string,
   ): Promise<OfferResponse> {
-    const enriched = await this.offersService.findById(offerId, viewerId);
+    const enriched = await this.offersService.findById(offerId, viewerId, {
+      includeNonActive: true,
+    });
     if (!enriched) {
       throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
     }

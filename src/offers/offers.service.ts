@@ -56,11 +56,17 @@ export class OffersService {
     return this.toOfferResponse(offer);
   }
 
-  async findById(id: string, viewerId?: string): Promise<OfferResponse | null> {
+  async findById(
+    id: string,
+    viewerId?: string,
+    options: { includeNonActive?: boolean } = {},
+  ): Promise<OfferResponse | null> {
     const offer = await this.prisma.offer.findFirst({
       where: {
         id,
-        status: { not: OfferStatus.DELETED },
+        status: options.includeNonActive
+          ? { not: OfferStatus.DELETED }
+          : OfferStatus.ACTIVE,
       },
       include: this.buildOfferResponseInclude(viewerId),
     });
