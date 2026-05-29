@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-05-29
 
 ### Added
 
@@ -19,12 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Registered `ModerationModule` in `AppModule`
 - Added e2e tests covering admin authorization, offer disable/restore (with `reportCount` reset), public hiding of disabled offers, user disable with refresh token revocation and access token rejection, user restore allowing re-login, and the admin reports listing
 
+### Changed
+
+- Updated the Postman collection with a Moderation folder covering admin offer listing, disable/restore, reports listing, and user disable/restore, plus a new `userId` environment variable
+- Added a `npm run promote-admin -- <email>` script that promotes an existing user to the `ADMIN` role, idempotent and friendly with clear messages
+
+### Fixed
+
+- Fixed offer restore leaving stale `report` rows behind: restoring a `DISABLED`/`REPORTED` offer now purges its reports in the same transaction as the `reportCount` reset, so previous reporters are no longer treated as duplicates and the report threshold can re-trigger `REPORTED` correctly
+
 ### Security
 
 - Hardened `OffersService.findById` so the public route (`GET /offers/:id`) only returns `ACTIVE` offers, hiding `REPORTED`, `DISABLED`, and `EXPIRED` ones; admin moderation paths opt in via `includeNonActive`
-
-### Security
-
 - Hardened `OffersService.findAll` so the `status` query parameter is honored only for admins or owners of the listed offers — public viewers can no longer escape the `ACTIVE` filter by passing `?status=`
 
 ## [0.5.0] - 2026-05-28
@@ -184,6 +190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[0.6.0]: https://github.com/ofertando-inc/back/releases/tag/v0.6.0
 [0.5.0]: https://github.com/ofertando-inc/back/releases/tag/v0.5.0
 [0.4.0]: https://github.com/ofertando-inc/back/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ofertando-inc/back/releases/tag/v0.3.0

@@ -96,14 +96,17 @@ export class ModerationService {
       );
     }
 
-    await this.prisma.offer.update({
-      where: { id: offerId },
-      data: {
-        status: OfferStatus.ACTIVE,
-        disabledAt: null,
-        reportCount: 0,
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.report.deleteMany({ where: { offerId } }),
+      this.prisma.offer.update({
+        where: { id: offerId },
+        data: {
+          status: OfferStatus.ACTIVE,
+          disabledAt: null,
+          reportCount: 0,
+        },
+      }),
+    ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
   }

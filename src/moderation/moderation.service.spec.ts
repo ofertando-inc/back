@@ -93,7 +93,8 @@ describe('ModerationService', () => {
   let prisma: {
     offer: { findUnique: jest.Mock; update: jest.Mock };
     user: { findUnique: jest.Mock; update: jest.Mock };
-    report: { findMany: jest.Mock };
+    report: { findMany: jest.Mock; deleteMany: jest.Mock };
+    $transaction: jest.Mock;
   };
   let offersService: jest.Mocked<Pick<OffersService, 'findAll' | 'findById'>>;
   let refreshTokensService: jest.Mocked<
@@ -104,7 +105,8 @@ describe('ModerationService', () => {
     prisma = {
       offer: { findUnique: jest.fn(), update: jest.fn() },
       user: { findUnique: jest.fn(), update: jest.fn() },
-      report: { findMany: jest.fn() },
+      report: { findMany: jest.fn(), deleteMany: jest.fn() },
+      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     offersService = {
       findAll: jest.fn(),
@@ -196,7 +198,7 @@ describe('ModerationService', () => {
   });
 
   describe('restoreOffer', () => {
-    it('transitions DISABLED offer back to ACTIVE and resets reportCount', async () => {
+    it('transitions DISABLED offer back to ACTIVE, resets reportCount, and purges its reports', async () => {
       prisma.offer.findUnique.mockResolvedValue(
         buildOffer({ status: OfferStatus.DISABLED, reportCount: 7 }),
       );
@@ -205,6 +207,9 @@ describe('ModerationService', () => {
 
       const result = await service.restoreOffer('offer-1', 'admin-1');
 
+      expect(prisma.report.deleteMany).toHaveBeenCalledWith({
+        where: { offerId: 'offer-1' },
+      });
       expect(prisma.offer.update).toHaveBeenCalledWith({
         where: { id: 'offer-1' },
         data: {
@@ -213,6 +218,7 @@ describe('ModerationService', () => {
           reportCount: 0,
         },
       });
+      expect(prisma.$transaction).toHaveBeenCalled();
       expect(result).toBe(enriched);
     });
 

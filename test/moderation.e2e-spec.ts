@@ -306,6 +306,59 @@ describe('Moderation flow (e2e)', () => {
       expect(res.status).toBe(400);
       expect(body.key).toBe('offer.invalid_status_transition');
     });
+
+    it('purges reports on restore so the same reporters can report again and re-trigger REPORTED', async () => {
+      // REPORT_THRESHOLD is 3 in the test environment
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const r1 = await registerUser('r1@example.com', 'r1');
+      const r2 = await registerUser('r2@example.com', 'r2');
+      const r3 = await registerUser('r3@example.com', 'r3');
+      const offer = await createOfferAs(author.accessToken);
+
+      const report = (token: string) =>
+        request(app.getHttpServer())
+          .post(`/offers/${offer.id}/reports`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ reason: ReportReason.SCAM });
+
+      // First round: 3 reports -> REPORTED
+      await report(r1.accessToken);
+      await report(r2.accessToken);
+      const firstTrigger = await report(r3.accessToken);
+      expect((firstTrigger.body as { status: string }).status).toBe('REPORTED');
+
+      // Admin reviews: disable then restore
+      await request(app.getHttpServer())
+        .patch(`/admin/offers/${offer.id}/disable`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .patch(`/admin/offers/${offer.id}/restore`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+
+      // Reports must be purged
+      const remaining = await prisma.report.count({
+        where: { offerId: offer.id },
+      });
+      expect(remaining).toBe(0);
+
+      // Second round: the SAME reporters can report again and re-trigger REPORTED
+      const r1Again = await report(r1.accessToken);
+      expect(r1Again.status).toBe(201);
+      await report(r2.accessToken);
+      const secondTrigger = await report(r3.accessToken);
+      expect((secondTrigger.body as { status: string }).status).toBe(
+        'REPORTED',
+      );
+
+      const reloaded = await prisma.offer.findUnique({
+        where: { id: offer.id },
+      });
+      expect(reloaded?.status).toBe(OfferStatus.REPORTED);
+      expect(reloaded?.reportCount).toBe(3);
+    });
   });
 
   describe('GET /admin/reports', () => {
