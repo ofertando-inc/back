@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated all docker-compose files (local, dev, staging, prod) to pass `OFFER_EXPIRATION_ENABLED` and `OFFER_EXPIRATION_INTERVAL` to the backend container
 - Added an `OffersExpirationService` that batch-flips `ACTIVE` offers past their `endDate` to `EXPIRED` via a single `updateMany`, scheduled at boot on a configurable interval (skipped entirely when disabled)
 
+### Changed
+
+- Public offer listing and detail now return `EXPIRED` offers alongside `ACTIVE` ones (expired offers are greyed out client-side), while `DISABLED`, `DELETED`, and `REPORTED` offers stay hidden from the public
+- `OffersService.findById` now flips an `ACTIVE` offer past its `endDate` to `EXPIRED` on read, keeping the stored status accurate for offers that are consulted between scheduled runs
+- Voting is now rejected on an `ACTIVE` offer whose `endDate` has passed (treated as expired), in addition to the existing non-`ACTIVE` rejection
+- Reporting is now rejected on an `ACTIVE` offer whose `endDate` has passed; `REPORTED` offers remain reportable regardless of date
+
 ## [0.6.0] - 2026-05-29
 
 ### Added

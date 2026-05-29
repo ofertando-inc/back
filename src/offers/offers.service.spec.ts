@@ -174,16 +174,45 @@ describe('OffersService', () => {
   });
 
   describe('findById', () => {
-    it('queries with an ACTIVE-only filter by default (public viewers)', async () => {
+    it('queries for ACTIVE or EXPIRED by default (public viewers, expired greyed)', async () => {
       const offer = buildOfferWithRelations();
       prismaOffer.findFirst.mockResolvedValue(offer);
 
       await service.findById('offer-1');
 
       expect(prismaOffer.findFirst).toHaveBeenCalledWith({
-        where: { id: 'offer-1', status: OfferStatus.ACTIVE },
+        where: {
+          id: 'offer-1',
+          status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+        },
         include: { createdBy: { select: { username: true } } },
       });
+    });
+
+    it('flips an ACTIVE offer past its endDate to EXPIRED on read', async () => {
+      prismaOffer.findFirst.mockResolvedValue(
+        buildOfferWithRelations({
+          status: OfferStatus.ACTIVE,
+          endDate: new Date('2000-01-01T00:00:00Z'),
+        }),
+      );
+      prismaOffer.update.mockResolvedValue(buildOffer());
+
+      const result = await service.findById('offer-1');
+
+      expect(prismaOffer.update).toHaveBeenCalledWith({
+        where: { id: 'offer-1' },
+        data: { status: OfferStatus.EXPIRED },
+      });
+      expect(result?.status).toBe(OfferStatus.EXPIRED);
+    });
+
+    it('does not flip an ACTIVE offer whose endDate is still in the future', async () => {
+      prismaOffer.findFirst.mockResolvedValue(buildOfferWithRelations());
+
+      await service.findById('offer-1');
+
+      expect(prismaOffer.update).not.toHaveBeenCalled();
     });
 
     it('queries with a DELETED-exclusion filter when includeNonActive is set (admin)', async () => {
@@ -208,7 +237,10 @@ describe('OffersService', () => {
       const result = await service.findById('offer-1', 'viewer-1');
 
       expect(prismaOffer.findFirst).toHaveBeenCalledWith({
-        where: { id: 'offer-1', status: OfferStatus.ACTIVE },
+        where: {
+          id: 'offer-1',
+          status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+        },
         include: {
           createdBy: { select: { username: true } },
           votes: {
@@ -389,13 +421,13 @@ describe('OffersService', () => {
   });
 
   describe('findAll', () => {
-    it('defaults to ACTIVE status and date sort with default limit', async () => {
+    it('defaults to ACTIVE+EXPIRED status and date sort with default limit', async () => {
       prismaOffer.findMany.mockResolvedValue([]);
 
       await service.findAll({} as ListOffersQueryDto);
 
       expect(prismaOffer.findMany).toHaveBeenCalledWith({
-        where: { status: OfferStatus.ACTIVE },
+        where: { status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] } },
         include: { createdBy: { select: { username: true } } },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 21,
@@ -426,7 +458,7 @@ describe('OffersService', () => {
 
       expect(prismaOffer.findMany).toHaveBeenCalledWith(
         objectContaining({
-          where: { status: OfferStatus.ACTIVE },
+          where: { status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] } },
         }),
       );
     });
