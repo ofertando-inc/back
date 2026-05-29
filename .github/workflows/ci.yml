@@ -44,6 +44,7 @@ jobs:
       REFRESH_TOKEN_SECRET: test_refresh_token_secret
       REFRESH_TOKEN_EXPIRES_IN: 30d
       REPORT_THRESHOLD: 3
+      OFFER_EXPIRATION_ENABLED: false
       CI: true
 
     steps:
