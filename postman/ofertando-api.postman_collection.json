@@ -348,6 +348,67 @@
           "response": []
         },
         {
+          "name": "Create offer (expires in 1 min)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('create returns 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "",
+                  "if (response.id) {",
+                  "  pm.environment.set('offerId', response.id);",
+                  "}",
+                  "",
+                  "console.log('Offer expires at', response.endDate, '- run Expire outdated offers now after that moment.');"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Dates are computed as UTC ISO strings (toISOString) — the correct format to send.",
+                  "const now = Date.now();",
+                  "const minute = 60 * 1000;",
+                  "pm.variables.set('offerStartDate', new Date(now - minute).toISOString());",
+                  "pm.variables.set('offerEndDate', new Date(now + minute).toISOString());"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Short-lived deal\",\n  \"description\": \"This offer expires one minute after creation, for testing expiration\",\n  \"offerType\": \"discount\",\n  \"storeName\": \"Acme Store\",\n  \"city\": \"Bogotá\",\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "offers"
+              ]
+            },
+            "description": "Creates an offer whose endDate is one minute from now (sent as a UTC ISO string). Wait ~1 minute, then call Moderation > Expire outdated offers now (or let the scheduled job run) to see it flip to EXPIRED."
+          },
+          "response": []
+        },
+        {
           "name": "Get offer by id",
           "request": {
             "method": "GET",
@@ -712,6 +773,43 @@
                 }
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "Expire outdated offers now",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('expire-now returns 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('response reports an expired count', function () {",
+                  "  pm.expect(pm.response.json()).to.have.property('expired');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/offers/expire-now",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "offers",
+                "expire-now"
+              ]
+            },
+            "description": "Runs the offer expiration job on demand: flips every ACTIVE offer past its endDate to EXPIRED and returns { expired: number }. The same job also runs automatically on the OFFER_EXPIRATION_INTERVAL schedule when OFFER_EXPIRATION_ENABLED is true."
           },
           "response": []
         },

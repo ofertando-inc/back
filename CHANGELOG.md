@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.7.0] - 2026-05-31
 
 ### Added
 
@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reporting is now rejected on an `ACTIVE` offer whose `endDate` has passed; `REPORTED` offers remain reportable regardless of date
 - Added `POST /admin/offers/expire-now`, an admin-only endpoint that runs the expiration job on demand and returns the number of offers expired
 - Added e2e tests covering public visibility of expired offers, flip-on-read on detail, vote/report rejection past `endDate`, and the manual expiration trigger (including admin authorization)
+- Updated the Postman collection with an "Expire outdated offers now" request in the Moderation folder
+- Added a "Create offer (expires in 1 min)" Postman request to exercise the expiration flow end to end
 
 ## [0.6.0] - 2026-05-29
 
@@ -208,6 +210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[0.7.0]: https://github.com/ofertando-inc/back/releases/tag/v0.7.0
 [0.6.0]: https://github.com/ofertando-inc/back/releases/tag/v0.6.0
 [0.5.0]: https://github.com/ofertando-inc/back/releases/tag/v0.5.0
 [0.4.0]: https://github.com/ofertando-inc/back/releases/tag/v0.4.0
