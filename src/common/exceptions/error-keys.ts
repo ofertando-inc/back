@@ -6,6 +6,8 @@ export const ErrorKey = {
 
   UserEmailTaken: 'user.email_taken',
   UserUsernameTaken: 'user.username_taken',
+  UserNotFound: 'user.not_found',
+  UserInvalidStatusTransition: 'user.invalid_status_transition',
 
   OfferNotFound: 'offer.not_found',
   OfferForbidden: 'offer.forbidden',
