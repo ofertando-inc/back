@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OffersService.findById` now flips an `ACTIVE` offer past its `endDate` to `EXPIRED` on read, keeping the stored status accurate for offers that are consulted between scheduled runs
 - Voting is now rejected on an `ACTIVE` offer whose `endDate` has passed (treated as expired), in addition to the existing non-`ACTIVE` rejection
 - Reporting is now rejected on an `ACTIVE` offer whose `endDate` has passed; `REPORTED` offers remain reportable regardless of date
+- Added `POST /admin/offers/expire-now`, an admin-only endpoint that runs the expiration job on demand and returns the number of offers expired
+- Added e2e tests covering public visibility of expired offers, flip-on-read on detail, vote/report rejection past `endDate`, and the manual expiration trigger (including admin authorization)
 
 ## [0.6.0] - 2026-05-29
 
