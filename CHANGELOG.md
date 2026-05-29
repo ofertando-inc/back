@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `@nestjs/schedule` and registered `ScheduleModule` to support scheduled background tasks
 - Added an `offerExpiration` configuration driven by `OFFER_EXPIRATION_ENABLED` (on/off, default disabled in tests) and `OFFER_EXPIRATION_INTERVAL` (duration such as `1h`, default `1h`)
 - Updated all docker-compose files (local, dev, staging, prod) to pass `OFFER_EXPIRATION_ENABLED` and `OFFER_EXPIRATION_INTERVAL` to the backend container
+- Added an `OffersExpirationService` that batch-flips `ACTIVE` offers past their `endDate` to `EXPIRED` via a single `updateMany`, scheduled at boot on a configurable interval (skipped entirely when disabled)
 
 ## [0.6.0] - 2026-05-29
 
