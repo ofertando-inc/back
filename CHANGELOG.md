@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-31
+
+### Added
+
+- Added `@nestjs/schedule` and registered `ScheduleModule` to support scheduled background tasks
+- Added an `offerExpiration` configuration driven by `OFFER_EXPIRATION_ENABLED` (on/off, default disabled in tests) and `OFFER_EXPIRATION_INTERVAL` (duration such as `1h`, default `1h`)
+- Updated all docker-compose files (local, dev, staging, prod) to pass `OFFER_EXPIRATION_ENABLED` and `OFFER_EXPIRATION_INTERVAL` to the backend container
+- Added an `OffersExpirationService` that batch-flips `ACTIVE` offers past their `endDate` to `EXPIRED` via a single `updateMany`, scheduled at boot on a configurable interval (skipped entirely when disabled)
+
+### Changed
+
+- Public offer listing and detail now return `EXPIRED` offers alongside `ACTIVE` ones (expired offers are greyed out client-side), while `DISABLED`, `DELETED`, and `REPORTED` offers stay hidden from the public
+- `OffersService.findById` now flips an `ACTIVE` offer past its `endDate` to `EXPIRED` on read, keeping the stored status accurate for offers that are consulted between scheduled runs
+- Voting is now rejected on an `ACTIVE` offer whose `endDate` has passed (treated as expired), in addition to the existing non-`ACTIVE` rejection
+- Reporting is now rejected on an `ACTIVE` offer whose `endDate` has passed; `REPORTED` offers remain reportable regardless of date
+- Added `POST /admin/offers/expire-now`, an admin-only endpoint that runs the expiration job on demand and returns the number of offers expired
+- Added e2e tests covering public visibility of expired offers, flip-on-read on detail, vote/report rejection past `endDate`, and the manual expiration trigger (including admin authorization)
+- Updated the Postman collection with an "Expire outdated offers now" request in the Moderation folder
+- Added a "Create offer (expires in 1 min)" Postman request to exercise the expiration flow end to end
+
 ## [0.6.0] - 2026-05-29
 
 ### Added
@@ -190,6 +210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[0.7.0]: https://github.com/ofertando-inc/back/releases/tag/v0.7.0
 [0.6.0]: https://github.com/ofertando-inc/back/releases/tag/v0.6.0
 [0.5.0]: https://github.com/ofertando-inc/back/releases/tag/v0.5.0
 [0.4.0]: https://github.com/ofertando-inc/back/releases/tag/v0.4.0

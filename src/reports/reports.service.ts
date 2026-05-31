@@ -29,10 +29,12 @@ export class ReportsService {
         throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
       }
 
-      if (
-        offer.status !== OfferStatus.ACTIVE &&
-        offer.status !== OfferStatus.REPORTED
-      ) {
+      const dateExpired = offer.endDate.getTime() < Date.now();
+      const reportable =
+        offer.status === OfferStatus.REPORTED ||
+        (offer.status === OfferStatus.ACTIVE && !dateExpired);
+
+      if (!reportable) {
         throw new AppException(
           ErrorKey.ReportOfferNotReportable,
           HttpStatus.BAD_REQUEST,

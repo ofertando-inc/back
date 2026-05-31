@@ -1,8 +1,11 @@
 import {
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -12,6 +15,7 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import type { PaginatedResult } from '../common/pagination/paginated-result.type';
 import { ListOffersQueryDto } from '../offers/dto/list-offers-query.dto';
+import { OffersExpirationService } from '../offers/offers-expiration.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
 import type { PublicUser } from '../users/types/public-user.type';
 import { ModerationService } from './moderation.service';
@@ -19,7 +23,10 @@ import { ModerationService } from './moderation.service';
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin/offers')
 export class AdminOffersController {
-  constructor(private readonly moderationService: ModerationService) {}
+  constructor(
+    private readonly moderationService: ModerationService,
+    private readonly offersExpirationService: OffersExpirationService,
+  ) {}
 
   @Get()
   list(
@@ -27,6 +34,13 @@ export class AdminOffersController {
     @Query() query: ListOffersQueryDto,
   ): Promise<PaginatedResult<OfferResponse>> {
     return this.moderationService.listOffers(query, admin.id);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('expire-now')
+  async expireNow(): Promise<{ expired: number }> {
+    const expired = await this.offersExpirationService.expireOutdatedOffers();
+    return { expired };
   }
 
   @Patch(':id/disable')

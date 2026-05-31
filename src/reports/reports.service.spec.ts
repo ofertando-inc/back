@@ -204,6 +204,19 @@ describe('ReportsService', () => {
       },
     );
 
+    it('throws report.offer_not_reportable on an ACTIVE offer past its endDate', async () => {
+      offer.findUnique.mockResolvedValue(
+        buildOffer({
+          status: OfferStatus.ACTIVE,
+          endDate: new Date('2000-01-01T00:00:00Z'),
+        }),
+      );
+
+      await expect(
+        service.create('user-1', 'offer-1', dto),
+      ).rejects.toMatchObject({ key: ErrorKey.ReportOfferNotReportable });
+    });
+
     it('uses the default threshold of 10 when configuration is missing', async () => {
       threshold = NaN;
       offer.findUnique.mockResolvedValue(buildOffer({ reportCount: 8 }));
