@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a `CommentLikesService` with idempotent like/unlike that adjusts the comment `likeCount` atomically and rejects likes on missing or deleted comments
 - Added a `CommentOwnerGuard` (admin or author) reusing the abstract owner guard, and a `CommentsController` exposing public thread/replies listings and authenticated create, edit, soft-delete, like, and unlike under `/offers/:offerId/comments`
 - Registered `CommentsModule` in `AppModule`; the offer `commentCount` now surfaces automatically in every `OfferResponse`
+- Added e2e tests covering comment creation, validation, non-commentable offers, one-level threading (reply + reply-to-reply rejection), owner edit and admin cascade delete, like/unlike with viewer-aware `liked`, and thread cursor pagination
 
 ### Changed
 
