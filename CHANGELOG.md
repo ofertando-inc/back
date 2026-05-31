@@ -5,27 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-05-31
 
 ### Added
 
 - Added Dependabot configuration (`.github/dependabot.yml`) for npm, GitHub Actions, and Docker dependencies, targeting the `dev` branch with grouped weekly minor/patch updates
 - Added a scheduled `npm audit` workflow (`.github/workflows/audit.yml`) that fails on high/critical advisories, as a safety net alongside Dependabot security alerts
 - Added `docs/dependencies.md` documenting the dependency update process and merge rules
-
 - Added the `Comment` and `CommentLike` Prisma models (with a one-level self-relation for replies) plus a `commentCount` column on offers, and the matching migration
 - Added comment error keys (`comment.not_found`, `comment.forbidden`, `comment.offer_not_commentable`, `comment.cannot_reply_to_reply`)
 - Added comment DTOs (`CreateCommentDto` with optional `parentId`, `UpdateCommentDto`, `ListCommentsQueryDto`) and the `CommentResponse` / `LikeResponse` types
-- Added a `CommentsService` with one-level threaded create (depth enforced), cursor-paginated thread and reply listings, owner edit with `editedAt`, and soft-delete that cascades to replies while keeping the offer `commentCount` and parent `replyCount` accurate inside transactions
+- Added a `CommentsService` with one-level threaded create (depth enforced), cursor-paginated thread and reply listings, owner edit with `editedAt`, and tombstone soft-delete: a deleted comment keeps its replies, is exposed with `deleted: true` and masked content while it still has live replies (otherwise it drops out of listings), and the offer `commentCount` / parent `replyCount` are kept accurate inside transactions
+- Added a `deleted` flag and nullable `content` to `CommentResponse`; `DELETE` on a comment now returns `200` with the resulting (tombstoned) comment instead of `204`
 - Added a `CommentLikesService` with idempotent like/unlike that adjusts the comment `likeCount` atomically and rejects likes on missing or deleted comments
 - Added a `CommentOwnerGuard` (admin or author) reusing the abstract owner guard, and a `CommentsController` exposing public thread/replies listings and authenticated create, edit, soft-delete, like, and unlike under `/offers/:offerId/comments`
 - Registered `CommentsModule` in `AppModule`; the offer `commentCount` now surfaces automatically in every `OfferResponse`
-- Added e2e tests covering comment creation, validation, non-commentable offers, one-level threading (reply + reply-to-reply rejection), owner edit and admin cascade delete, like/unlike with viewer-aware `liked`, and thread cursor pagination
+- Added e2e tests covering comment creation, validation, non-commentable offers, one-level threading (reply + reply-to-reply rejection), owner edit, tombstone delete (placeholder kept when replies survive, dropped otherwise), like/unlike with viewer-aware `liked`, and thread cursor pagination
+- Updated the Postman collection with a Comments folder (create, reply, list thread, list replies, edit, like, unlike, delete) and a `commentId` environment variable
 
 ### Changed
 
 - Relaxed `@typescript-eslint/no-unnecessary-type-assertion` in test files so the deliberate Jest mock/matcher type assertions stay valid under newer `typescript-eslint` releases
 - Replaced a redundant `as DateCursor` assertion in `OffersService` with a type annotation
+- Aligned `@types/node` to the major matching the Node 24 runtime (`^24`) instead of `^22`
 
 ## [0.7.0] - 2026-05-31
 

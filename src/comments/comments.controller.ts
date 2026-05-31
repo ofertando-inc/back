@@ -78,11 +78,10 @@ export class CommentsController {
     return this.commentsService.update(commentId, dto);
   }
 
-  @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard, CommentOwnerGuard)
   @Delete(':commentId')
-  async remove(@Param('commentId') commentId: string): Promise<void> {
-    await this.commentsService.softDelete(commentId);
+  remove(@Param('commentId') commentId: string): Promise<CommentResponse> {
+    return this.commentsService.softDelete(commentId);
   }
 
   @HttpCode(HttpStatus.OK)

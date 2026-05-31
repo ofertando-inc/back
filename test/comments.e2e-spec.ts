@@ -16,12 +16,13 @@ type RegisteredUser = {
 
 type CommentBody = {
   id: string;
-  content: string;
+  content: string | null;
   editedAt: string | null;
   user: { id: string; username: string };
   likeCount: number;
   replyCount: number;
   liked: boolean;
+  deleted: boolean;
 };
 
 type CommentListBody = {
@@ -287,7 +288,7 @@ describe('Comments flow (e2e)', () => {
       expect(body.key).toBe('comment.forbidden');
     });
 
-    it('lets an admin delete any comment and cascades to replies', async () => {
+    it('tombstones a top-level comment with replies (admin), preserving the thread', async () => {
       const author = await registerUser('author@example.com', 'author');
       const admin = await registerAdmin('admin@example.com', 'admin');
       const offerId = await createOffer(author.accessToken);
@@ -303,8 +304,45 @@ describe('Comments flow (e2e)', () => {
       const del = await request(app.getHttpServer())
         .delete(`/offers/${offerId}/comments/${rootId}`)
         .set('Authorization', `Bearer ${admin.accessToken}`);
+      const delBody = del.body as CommentBody;
 
-      expect(del.status).toBe(204);
+      expect(del.status).toBe(200);
+      expect(delBody.deleted).toBe(true);
+      expect(delBody.content).toBeNull();
+
+      // The thread still shows the tombstone (it has a live reply).
+      const thread = await request(app.getHttpServer()).get(
+        `/offers/${offerId}/comments`,
+      );
+      const threadItems = (thread.body as CommentListBody).items;
+      expect(threadItems).toHaveLength(1);
+      expect(threadItems[0]).toMatchObject({ deleted: true, content: null });
+
+      // The reply survives.
+      const replies = await request(app.getHttpServer()).get(
+        `/offers/${offerId}/comments/${rootId}/replies`,
+      );
+      expect((replies.body as CommentListBody).items).toHaveLength(1);
+
+      // commentCount counts only live comments: the surviving reply.
+      const detail = await request(app.getHttpServer()).get(
+        `/offers/${offerId}`,
+      );
+      expect((detail.body as OfferBody).commentCount).toBe(1);
+    });
+
+    it('drops a top-level comment with no replies out of the thread', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const offerId = await createOffer(author.accessToken);
+      const created = await comment(author.accessToken, offerId, {
+        content: 'lonely',
+      });
+      const id = (created.body as CommentBody).id;
+
+      await request(app.getHttpServer())
+        .delete(`/offers/${offerId}/comments/${id}`)
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .expect(200);
 
       const thread = await request(app.getHttpServer()).get(
         `/offers/${offerId}/comments`,

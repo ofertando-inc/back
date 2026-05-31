@@ -227,42 +227,41 @@ describe('CommentsService', () => {
   });
 
   describe('softDelete', () => {
-    it('soft-deletes a top-level comment with replies, cascading and adjusting commentCount', async () => {
+    it('tombstones a top-level comment without cascading to replies', async () => {
       comment.findUnique.mockResolvedValue(
         buildComment({ id: 'root-1', parentId: null, offerId: 'offer-1' }),
       );
-      comment.count.mockResolvedValue(2);
-
-      await service.softDelete('root-1');
-
-      expect(comment.updateMany).toHaveBeenCalledWith({
-        where: { parentId: 'root-1', deletedAt: null },
-        data: { deletedAt: expect.any(Date) as Date },
-      });
-      expect(offer.update).toHaveBeenCalledWith({
-        where: { id: 'offer-1' },
-        data: { commentCount: { decrement: 3 } },
-      });
-    });
-
-    it('soft-deletes a top-level comment without replies (decrement by 1)', async () => {
-      comment.findUnique.mockResolvedValue(
-        buildComment({ id: 'root-1', parentId: null }),
+      comment.update.mockResolvedValue(
+        buildComment({ id: 'root-1', deletedAt: new Date() }),
       );
-      comment.count.mockResolvedValue(0);
 
-      await service.softDelete('root-1');
+      const result = await service.softDelete('root-1');
 
+      // No cascade: replies are never bulk-deleted.
       expect(comment.updateMany).not.toHaveBeenCalled();
+      expect(comment.update).toHaveBeenCalledWith({
+        where: { id: 'root-1' },
+        data: { deletedAt: expect.any(Date) as Date },
+        include: expect.any(Object) as object,
+      });
       expect(offer.update).toHaveBeenCalledWith({
         where: { id: 'offer-1' },
         data: { commentCount: { decrement: 1 } },
       });
+      expect(result.deleted).toBe(true);
+      expect(result.content).toBeNull();
     });
 
-    it('soft-deletes a reply and decrements both commentCount and parent replyCount', async () => {
+    it('tombstones a reply and decrements both commentCount and parent replyCount', async () => {
       comment.findUnique.mockResolvedValue(
         buildComment({ id: 'reply-1', parentId: 'root-1' }),
+      );
+      comment.update.mockResolvedValue(
+        buildComment({
+          id: 'reply-1',
+          parentId: 'root-1',
+          deletedAt: new Date(),
+        }),
       );
 
       await service.softDelete('reply-1');
@@ -296,15 +295,34 @@ describe('CommentsService', () => {
 
       const calls = comment.findMany.mock.calls as unknown[][];
       const call = calls[0]?.[0] as {
-        where: { offerId: string; parentId: null; deletedAt: null };
+        where: { offerId: string; parentId: null; OR: unknown[] };
       };
-      expect(call.where).toMatchObject({
-        offerId: 'offer-1',
-        parentId: null,
-        deletedAt: null,
-      });
+      expect(call.where).toMatchObject({ offerId: 'offer-1', parentId: null });
+      // Live comments OR tombstones (deleted with a surviving reply).
+      expect(call.where.OR).toEqual([
+        { deletedAt: null },
+        {
+          deletedAt: { not: null },
+          replies: { some: { deletedAt: null } },
+        },
+      ]);
       expect(result.items[0].liked).toBe(true);
       expect(result.nextCursor).toBeNull();
+    });
+
+    it('exposes a tombstone with masked content and deleted=true', async () => {
+      comment.findMany.mockResolvedValue([
+        buildComment({ id: 'c1', deletedAt: new Date(), replyCount: 2 }),
+      ]);
+
+      const result = await service.findThread('offer-1', {});
+
+      expect(result.items[0]).toMatchObject({
+        id: 'c1',
+        content: null,
+        deleted: true,
+        replyCount: 2,
+      });
     });
 
     it('returns a nextCursor when there are more items', async () => {

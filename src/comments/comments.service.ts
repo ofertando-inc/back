@@ -128,47 +128,37 @@ export class CommentsService {
     return this.toResponse(updated);
   }
 
-  async softDelete(id: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+  async softDelete(id: string): Promise<CommentResponse> {
+    return this.prisma.$transaction(async (tx) => {
       const comment = await tx.comment.findUnique({ where: { id } });
 
       if (!comment || comment.deletedAt) {
         throw new AppException(ErrorKey.CommentNotFound, HttpStatus.NOT_FOUND);
       }
 
-      const now = new Date();
+      // Tombstone: mark the comment as deleted but keep its replies intact. A
+      // deleted top-level comment that still has live replies is shown as a
+      // placeholder in the thread; one without live replies (and any deleted
+      // reply) simply drops out of the listings. No cascade.
+      const updated = await tx.comment.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+        include: this.buildInclude(),
+      });
 
-      if (comment.parentId === null) {
-        const activeReplies = await tx.comment.count({
-          where: { parentId: id, deletedAt: null },
-        });
+      await tx.offer.update({
+        where: { id: comment.offerId },
+        data: { commentCount: { decrement: 1 } },
+      });
 
-        if (activeReplies > 0) {
-          await tx.comment.updateMany({
-            where: { parentId: id, deletedAt: null },
-            data: { deletedAt: now },
-          });
-        }
-
-        await tx.comment.update({ where: { id }, data: { deletedAt: now } });
-
-        await tx.offer.update({
-          where: { id: comment.offerId },
-          data: { commentCount: { decrement: 1 + activeReplies } },
-        });
-      } else {
-        await tx.comment.update({ where: { id }, data: { deletedAt: now } });
-
-        await tx.offer.update({
-          where: { id: comment.offerId },
-          data: { commentCount: { decrement: 1 } },
-        });
-
+      if (comment.parentId) {
         await tx.comment.update({
           where: { id: comment.parentId },
           data: { replyCount: { decrement: 1 } },
         });
       }
+
+      return this.toResponse(updated);
     });
   }
 
@@ -178,11 +168,26 @@ export class CommentsService {
     viewerId?: string,
   ): Promise<PaginatedResult<CommentResponse>> {
     const limit = query.limit ?? 20;
-    const where: Prisma.CommentWhereInput = {
-      offerId: scope.offerId,
-      parentId: scope.parentId,
-      deletedAt: null,
-    };
+    const where: Prisma.CommentWhereInput =
+      scope.parentId === null
+        ? {
+            offerId: scope.offerId,
+            parentId: null,
+            // Live top-level comments, plus tombstones (deleted comments that
+            // still have at least one live reply).
+            OR: [
+              { deletedAt: null },
+              {
+                deletedAt: { not: null },
+                replies: { some: { deletedAt: null } },
+              },
+            ],
+          }
+        : {
+            offerId: scope.offerId,
+            parentId: scope.parentId,
+            deletedAt: null,
+          };
 
     if (query.cursor) {
       const cursor = decodeCursor<CommentCursor>(query.cursor);
@@ -236,15 +241,17 @@ export class CommentsService {
   }
 
   private toResponse(comment: CommentWithRelations): CommentResponse {
+    const deleted = comment.deletedAt !== null;
     return {
       id: comment.id,
-      content: comment.content,
+      content: deleted ? null : comment.content,
       createdAt: comment.createdAt,
       editedAt: comment.editedAt,
       user: comment.user,
       likeCount: comment.likeCount,
       replyCount: comment.replyCount,
       liked: (comment.likes?.length ?? 0) > 0,
+      deleted,
     };
   }
 }
