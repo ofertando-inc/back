@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added comment error keys (`comment.not_found`, `comment.forbidden`, `comment.offer_not_commentable`, `comment.cannot_reply_to_reply`)
 - Added comment DTOs (`CreateCommentDto` with optional `parentId`, `UpdateCommentDto`, `ListCommentsQueryDto`) and the `CommentResponse` / `LikeResponse` types
 - Added a `CommentsService` with one-level threaded create (depth enforced), cursor-paginated thread and reply listings, owner edit with `editedAt`, and soft-delete that cascades to replies while keeping the offer `commentCount` and parent `replyCount` accurate inside transactions
+- Added a `CommentLikesService` with idempotent like/unlike that adjusts the comment `likeCount` atomically and rejects likes on missing or deleted comments
 
 ### Changed
 
