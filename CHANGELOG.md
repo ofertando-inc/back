@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a scheduled `npm audit` workflow (`.github/workflows/audit.yml`) that fails on high/critical advisories, as a safety net alongside Dependabot security alerts
 - Added `docs/dependencies.md` documenting the dependency update process and merge rules
 
+- Added the `Comment` and `CommentLike` Prisma models (with a one-level self-relation for replies) plus a `commentCount` column on offers, and the matching migration
+- Added comment error keys (`comment.not_found`, `comment.forbidden`, `comment.offer_not_commentable`, `comment.cannot_reply_to_reply`)
+- Added comment DTOs (`CreateCommentDto` with optional `parentId`, `UpdateCommentDto`, `ListCommentsQueryDto`) and the `CommentResponse` / `LikeResponse` types
+
 ### Changed
 
 - Relaxed `@typescript-eslint/no-unnecessary-type-assertion` in test files so the deliberate Jest mock/matcher type assertions stay valid under newer `typescript-eslint` releases

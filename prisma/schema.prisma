@@ -51,6 +51,8 @@ model User {
   votes         Vote[]
   reports       Report[]
   refreshTokens RefreshToken[]
+  comments      Comment[]
+  commentLikes  CommentLike[]
 
   @@map("users")
 }
@@ -82,18 +84,20 @@ model Offer {
   city        String
   startDate   DateTime
   endDate     DateTime
-  status      OfferStatus @default(ACTIVE)
-  score       Int         @default(0)
-  reportCount Int         @default(0)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  disabledAt  DateTime?
-  deletedAt   DateTime?
+  status       OfferStatus @default(ACTIVE)
+  score        Int         @default(0)
+  reportCount  Int         @default(0)
+  commentCount Int         @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  disabledAt   DateTime?
+  deletedAt    DateTime?
 
   createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
   votes       Vote[]
   reports     Report[]
+  comments    Comment[]
 
   @@index([status])
   @@index([createdById])
@@ -131,4 +135,42 @@ model Report {
   @@unique([userId, offerId])
   @@index([offerId])
   @@map("reports")
+}
+
+model Comment {
+  id         String    @id @default(uuid())
+  content    String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  editedAt   DateTime?
+  deletedAt  DateTime?
+  likeCount  Int       @default(0)
+  replyCount Int       @default(0)
+
+  userId   String
+  offerId  String
+  parentId String?
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer    Offer         @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  parent   Comment?      @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[]     @relation("CommentThread")
+  likes    CommentLike[]
+
+  @@index([offerId])
+  @@index([parentId])
+  @@map("comments")
+}
+
+model CommentLike {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId    String
+  commentId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, commentId])
+  @@index([commentId])
+  @@map("comment_likes")
 }

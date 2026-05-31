@@ -20,6 +20,7 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     status: OfferStatus.ACTIVE,
     score: 0,
     reportCount: 0,
+    commentCount: 0,
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     disabledAt: null,
