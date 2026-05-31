@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added Dependabot configuration (`.github/dependabot.yml`) for npm, GitHub Actions, and Docker dependencies, targeting the `dev` branch with grouped weekly minor/patch updates
+- Added a scheduled `npm audit` workflow (`.github/workflows/audit.yml`) that fails on high/critical advisories, as a safety net alongside Dependabot security alerts
+- Added `docs/dependencies.md` documenting the dependency update process and merge rules
+
 ## [0.7.0] - 2026-05-31
 
 ### Added
