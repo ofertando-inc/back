@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a scheduled `npm audit` workflow (`.github/workflows/audit.yml`) that fails on high/critical advisories, as a safety net alongside Dependabot security alerts
 - Added `docs/dependencies.md` documenting the dependency update process and merge rules
 
+### Changed
+
+- Relaxed `@typescript-eslint/no-unnecessary-type-assertion` in test files so the deliberate Jest mock/matcher type assertions stay valid under newer `typescript-eslint` releases
+- Replaced a redundant `as DateCursor` assertion in `OffersService` with a type annotation
+
 ## [0.7.0] - 2026-05-31
 
 ### Added
