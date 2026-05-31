@@ -32,4 +32,14 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // Test files rely on deliberate type assertions to type Jest mocks and
+    // asymmetric matchers (expect.any / objectContaining). typescript-eslint's
+    // type inference flags some of these as "unnecessary", but they are needed
+    // to satisfy the no-unsafe rules, so the rule is relaxed in tests only.
+    files: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
+    rules: {
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+    },
+  },
 );
