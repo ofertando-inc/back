@@ -26,7 +26,10 @@ export class VotesService {
         throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
       }
 
-      if (offer.status !== OfferStatus.ACTIVE) {
+      if (
+        offer.status !== OfferStatus.ACTIVE ||
+        offer.endDate.getTime() < Date.now()
+      ) {
         throw new AppException(
           ErrorKey.VoteOfferNotVoteable,
           HttpStatus.BAD_REQUEST,
@@ -70,7 +73,10 @@ export class VotesService {
         throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
       }
 
-      if (offer.status !== OfferStatus.ACTIVE) {
+      if (
+        offer.status !== OfferStatus.ACTIVE ||
+        offer.endDate.getTime() < Date.now()
+      ) {
         throw new AppException(
           ErrorKey.VoteOfferNotVoteable,
           HttpStatus.BAD_REQUEST,

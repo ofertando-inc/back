@@ -188,6 +188,19 @@ describe('VotesService', () => {
       },
     );
 
+    it('throws vote.offer_not_voteable on an ACTIVE offer past its endDate', async () => {
+      offer.findUnique.mockResolvedValue(
+        buildOffer({
+          status: OfferStatus.ACTIVE,
+          endDate: new Date('2000-01-01T00:00:00Z'),
+        }),
+      );
+
+      await expect(
+        service.cast('user-1', 'offer-1', VoteType.UP),
+      ).rejects.toMatchObject({ key: ErrorKey.VoteOfferNotVoteable });
+    });
+
     it('runs inside a Prisma transaction', async () => {
       offer.findUnique.mockResolvedValue(buildOffer({ score: 5 }));
       vote.findUnique.mockResolvedValue(null);

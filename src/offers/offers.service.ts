@@ -66,12 +66,30 @@ export class OffersService {
         id,
         status: options.includeNonActive
           ? { not: OfferStatus.DELETED }
-          : OfferStatus.ACTIVE,
+          : { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
       },
       include: this.buildOfferResponseInclude(viewerId),
     });
 
-    return offer ? this.toOfferResponse(offer) : null;
+    if (!offer) {
+      return null;
+    }
+
+    // Flip-on-read: an ACTIVE offer past its endDate is effectively expired.
+    // Persist the transition so the stored status stays accurate for hot offers,
+    // while the scheduled job handles the cold ones.
+    if (
+      offer.status === OfferStatus.ACTIVE &&
+      offer.endDate.getTime() < Date.now()
+    ) {
+      await this.prisma.offer.update({
+        where: { id: offer.id },
+        data: { status: OfferStatus.EXPIRED },
+      });
+      offer.status = OfferStatus.EXPIRED;
+    }
+
+    return this.toOfferResponse(offer);
   }
 
   findRawById(id: string): Promise<Offer | null> {
@@ -235,7 +253,9 @@ export class OffersService {
     } else if (options.ownerId) {
       where.status = { not: OfferStatus.DELETED };
     } else {
-      where.status = OfferStatus.ACTIVE;
+      // Public listings show active and expired offers (expired ones are
+      // greyed out client-side); moderation-only statuses stay hidden.
+      where.status = { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] };
     }
 
     if (options.ownerId) {
