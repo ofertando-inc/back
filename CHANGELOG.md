@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added the `Comment` and `CommentLike` Prisma models (with a one-level self-relation for replies) plus a `commentCount` column on offers, and the matching migration
 - Added comment error keys (`comment.not_found`, `comment.forbidden`, `comment.offer_not_commentable`, `comment.cannot_reply_to_reply`)
 - Added comment DTOs (`CreateCommentDto` with optional `parentId`, `UpdateCommentDto`, `ListCommentsQueryDto`) and the `CommentResponse` / `LikeResponse` types
+- Added a `CommentsService` with one-level threaded create (depth enforced), cursor-paginated thread and reply listings, owner edit with `editedAt`, and soft-delete that cascades to replies while keeping the offer `commentCount` and parent `replyCount` accurate inside transactions
 
 ### Changed
 
