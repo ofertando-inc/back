@@ -17,20 +17,21 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 import type { PaginatedResult } from '../common/pagination/paginated-result.type';
 import type { PublicUser } from '../users/types/public-user.type';
-import { CommentLikesService } from './comment-likes.service';
+import { CommentVotesService } from './comment-votes.service';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { ListCommentsQueryDto } from './dto/list-comments-query.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
+import { VoteCommentDto } from './dto/vote-comment.dto';
 import { CommentOwnerGuard } from './guards/comment-owner.guard';
 import type { CommentResponse } from './types/comment-response.type';
-import type { LikeResponse } from './types/like-response.type';
+import type { CommentVoteResponse } from './types/comment-vote-response.type';
 
 @Controller('offers/:offerId/comments')
 export class CommentsController {
   constructor(
     private readonly commentsService: CommentsService,
-    private readonly commentLikesService: CommentLikesService,
+    private readonly commentVotesService: CommentVotesService,
   ) {}
 
   @UseGuards(OptionalJwtAuthGuard)
@@ -86,21 +87,22 @@ export class CommentsController {
 
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  @Post(':commentId/likes')
-  like(
+  @Post(':commentId/votes')
+  vote(
     @Param('commentId') commentId: string,
     @CurrentUser() user: PublicUser,
-  ): Promise<LikeResponse> {
-    return this.commentLikesService.like(user.id, commentId);
+    @Body() dto: VoteCommentDto,
+  ): Promise<CommentVoteResponse> {
+    return this.commentVotesService.cast(user.id, commentId, dto.type);
   }
 
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
-  @Delete(':commentId/likes')
-  unlike(
+  @Delete(':commentId/votes')
+  withdrawVote(
     @Param('commentId') commentId: string,
     @CurrentUser() user: PublicUser,
-  ): Promise<LikeResponse> {
-    return this.commentLikesService.unlike(user.id, commentId);
+  ): Promise<CommentVoteResponse> {
+    return this.commentVotesService.withdraw(user.id, commentId);
   }
 }

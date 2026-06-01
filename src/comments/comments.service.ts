@@ -16,10 +16,15 @@ type CommentCursor = {
   id: string;
 };
 
-type CommentWithRelations = Comment & {
-  user: { id: string; username: string };
-  likes?: { id: string }[];
-};
+const COMMENT_INCLUDE = {
+  user: { select: { id: true, username: true } },
+  replyTo: { select: { id: true, user: { select: { username: true } } } },
+  votes: { select: { type: true } },
+} satisfies Prisma.CommentInclude;
+
+type CommentWithRelations = Prisma.CommentGetPayload<{
+  include: typeof COMMENT_INCLUDE;
+}>;
 
 @Injectable()
 export class CommentsService {
@@ -47,31 +52,34 @@ export class CommentsService {
         );
       }
 
+      // Threading stays one level deep: parentId always points to the thread
+      // root. Replying to a reply is allowed — it is flattened under the root
+      // and records replyToId so the client can show "replying to @user".
+      let parentId: string | null = null;
+      let replyToId: string | null = null;
+
       if (dto.parentId) {
-        const parent = await tx.comment.findUnique({
+        const target = await tx.comment.findUnique({
           where: { id: dto.parentId },
         });
-        if (!parent || parent.deletedAt || parent.offerId !== offerId) {
+        if (!target || target.deletedAt || target.offerId !== offerId) {
           throw new AppException(
             ErrorKey.CommentNotFound,
             HttpStatus.NOT_FOUND,
           );
         }
-        if (parent.parentId !== null) {
-          throw new AppException(
-            ErrorKey.CommentCannotReplyToReply,
-            HttpStatus.BAD_REQUEST,
-          );
+        if (target.parentId === null) {
+          // Replying directly to a root comment.
+          parentId = target.id;
+        } else {
+          // Replying to a reply: flatten under its root, tag the target.
+          parentId = target.parentId;
+          replyToId = target.id;
         }
       }
 
       const comment = await tx.comment.create({
-        data: {
-          content: dto.content,
-          userId,
-          offerId,
-          parentId: dto.parentId ?? null,
-        },
+        data: { content: dto.content, userId, offerId, parentId, replyToId },
         include: this.buildInclude(userId),
       });
 
@@ -80,9 +88,9 @@ export class CommentsService {
         data: { commentCount: { increment: 1 } },
       });
 
-      if (dto.parentId) {
+      if (parentId) {
         await tx.comment.update({
-          where: { id: dto.parentId },
+          where: { id: parentId },
           data: { replyCount: { increment: 1 } },
         });
       }
@@ -224,20 +232,15 @@ export class CommentsService {
     };
   }
 
-  private buildInclude(viewerId?: string): Prisma.CommentInclude {
-    const include: Prisma.CommentInclude = {
-      user: { select: { id: true, username: true } },
-    };
-
-    if (viewerId) {
-      include.likes = {
-        where: { userId: viewerId },
-        select: { id: true },
+  private buildInclude(viewerId?: string) {
+    return {
+      ...COMMENT_INCLUDE,
+      votes: {
+        where: { userId: viewerId ?? '' },
+        select: { type: true },
         take: 1,
-      };
-    }
-
-    return include;
+      },
+    } satisfies Prisma.CommentInclude;
   }
 
   private toResponse(comment: CommentWithRelations): CommentResponse {
@@ -248,9 +251,12 @@ export class CommentsService {
       createdAt: comment.createdAt,
       editedAt: comment.editedAt,
       user: comment.user,
-      likeCount: comment.likeCount,
+      replyTo: comment.replyTo
+        ? { id: comment.replyTo.id, username: comment.replyTo.user.username }
+        : null,
+      score: comment.score,
       replyCount: comment.replyCount,
-      liked: (comment.likes?.length ?? 0) > 0,
+      userVote: comment.votes?.[0]?.type ?? null,
       deleted,
     };
   }

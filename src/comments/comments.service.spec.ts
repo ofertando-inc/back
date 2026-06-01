@@ -1,10 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Comment, Offer, OfferStatus } from '@prisma/client';
+import { Comment, Offer, OfferStatus, VoteType } from '@prisma/client';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { encodeCursor } from '../common/pagination/cursor.helper';
 import { PrismaService } from '../prisma/prisma.service';
 import { CommentsService } from './comments.service';
+
+const objectContaining = <T extends object>(value: T): T =>
+  expect.objectContaining(value) as unknown as T;
 
 function buildOffer(overrides: Partial<Offer> = {}): Offer {
   return {
@@ -32,7 +35,8 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
 
 type CommentRow = Comment & {
   user?: { id: string; username: string };
-  likes?: { id: string }[];
+  replyTo?: { id: string; user: { username: string } } | null;
+  votes?: { type: VoteType }[];
 };
 
 function buildComment(overrides: Partial<CommentRow> = {}): CommentRow {
@@ -43,12 +47,14 @@ function buildComment(overrides: Partial<CommentRow> = {}): CommentRow {
     updatedAt: new Date('2024-06-01T00:00:00Z'),
     editedAt: null,
     deletedAt: null,
-    likeCount: 0,
+    score: 0,
     replyCount: 0,
     userId: 'user-1',
     offerId: 'offer-1',
     parentId: null,
+    replyToId: null,
     user: { id: 'user-1', username: 'commenter' },
+    replyTo: null,
     ...overrides,
   };
 }
@@ -113,13 +119,13 @@ describe('CommentsService', () => {
         id: 'comment-1',
         content: 'Nice deal',
         user: { id: 'user-1', username: 'commenter' },
-        likeCount: 0,
+        score: 0,
         replyCount: 0,
-        liked: false,
+        userVote: null,
       });
     });
 
-    it('creates a reply and increments both commentCount and the parent replyCount', async () => {
+    it('creates a reply to a root comment and increments both commentCount and the parent replyCount', async () => {
       offer.findUnique.mockResolvedValue(buildOffer());
       comment.findUnique.mockResolvedValue(
         buildComment({ id: 'parent-1', parentId: null }),
@@ -133,6 +139,11 @@ describe('CommentsService', () => {
         parentId: 'parent-1',
       });
 
+      expect(comment.create).toHaveBeenCalledWith(
+        objectContaining({
+          data: objectContaining({ parentId: 'parent-1', replyToId: null }),
+        }),
+      );
       expect(comment.update).toHaveBeenCalledWith({
         where: { id: 'parent-1' },
         data: { replyCount: { increment: 1 } },
@@ -141,6 +152,42 @@ describe('CommentsService', () => {
         where: { id: 'offer-1' },
         data: { commentCount: { increment: 1 } },
       });
+    });
+
+    it('flattens a reply-to-a-reply under the thread root and records replyToId', async () => {
+      offer.findUnique.mockResolvedValue(buildOffer());
+      comment.findUnique.mockResolvedValue(
+        buildComment({ id: 'reply-1', parentId: 'root-1' }),
+      );
+      comment.create.mockResolvedValue(
+        buildComment({
+          id: 'reply-2',
+          parentId: 'root-1',
+          replyToId: 'reply-1',
+          replyTo: { id: 'reply-1', user: { username: 'commenter' } },
+        }),
+      );
+
+      const result = await service.create('user-1', 'offer-1', {
+        content: 'agreed with you',
+        parentId: 'reply-1',
+      });
+
+      // parentId is normalized to the root, replyToId tags the answered reply
+      expect(comment.create).toHaveBeenCalledWith(
+        objectContaining({
+          data: objectContaining({
+            parentId: 'root-1',
+            replyToId: 'reply-1',
+          }),
+        }),
+      );
+      // the root (not the answered reply) gets its replyCount incremented
+      expect(comment.update).toHaveBeenCalledWith({
+        where: { id: 'root-1' },
+        data: { replyCount: { increment: 1 } },
+      });
+      expect(result.replyTo).toEqual({ id: 'reply-1', username: 'commenter' });
     });
 
     it('throws offer.not_found when the offer does not exist', async () => {
@@ -185,18 +232,18 @@ describe('CommentsService', () => {
       ).rejects.toMatchObject({ key: ErrorKey.CommentNotFound });
     });
 
-    it('throws comment.cannot_reply_to_reply when the parent is itself a reply', async () => {
+    it('throws comment.not_found when replying to a deleted parent', async () => {
       offer.findUnique.mockResolvedValue(buildOffer());
       comment.findUnique.mockResolvedValue(
-        buildComment({ id: 'reply-1', parentId: 'root-1' }),
+        buildComment({ id: 'parent-1', deletedAt: new Date() }),
       );
 
       await expect(
         service.create('user-1', 'offer-1', {
           content: 'x',
-          parentId: 'reply-1',
+          parentId: 'parent-1',
         }),
-      ).rejects.toMatchObject({ key: ErrorKey.CommentCannotReplyToReply });
+      ).rejects.toMatchObject({ key: ErrorKey.CommentNotFound });
     });
   });
 
@@ -286,9 +333,9 @@ describe('CommentsService', () => {
   });
 
   describe('findThread', () => {
-    it('lists top-level comments and exposes liked for the viewer', async () => {
+    it('lists top-level comments and exposes the viewer vote', async () => {
       comment.findMany.mockResolvedValue([
-        buildComment({ id: 'c1', likes: [{ id: 'like-1' }] }),
+        buildComment({ id: 'c1', votes: [{ type: VoteType.UP }] }),
       ]);
 
       const result = await service.findThread('offer-1', {}, 'viewer-1');
@@ -306,7 +353,7 @@ describe('CommentsService', () => {
           replies: { some: { deletedAt: null } },
         },
       ]);
-      expect(result.items[0].liked).toBe(true);
+      expect(result.items[0].userVote).toBe(VoteType.UP);
       expect(result.nextCursor).toBeNull();
     });
 

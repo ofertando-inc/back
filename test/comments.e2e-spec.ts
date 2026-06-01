@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { OfferStatus, UserRole } from '@prisma/client';
+import { OfferStatus, UserRole, VoteType } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -19,9 +19,10 @@ type CommentBody = {
   content: string | null;
   editedAt: string | null;
   user: { id: string; username: string };
-  likeCount: number;
+  replyTo: { id: string; username: string } | null;
+  score: number;
   replyCount: number;
-  liked: boolean;
+  userVote: VoteType | null;
   deleted: boolean;
 };
 
@@ -30,7 +31,7 @@ type CommentListBody = {
   nextCursor: string | null;
 };
 
-type LikeBody = { likeCount: number; liked: boolean };
+type VoteBody = { score: number; userVote: VoteType | null };
 
 type OfferBody = { id: string; commentCount: number };
 
@@ -142,9 +143,9 @@ describe('Comments flow (e2e)', () => {
       expect(body).toMatchObject({
         content: 'Great deal!',
         user: { id: commenter.user.id, username: 'commenter' },
-        likeCount: 0,
+        score: 0,
         replyCount: 0,
-        liked: false,
+        userVote: null,
       });
 
       const detail = await request(app.getHttpServer()).get(
@@ -196,7 +197,7 @@ describe('Comments flow (e2e)', () => {
     });
   });
 
-  describe('Threading (one level)', () => {
+  describe('Threading (flat, one level + replyTo)', () => {
     it('creates a reply and increments the parent replyCount', async () => {
       const author = await registerUser('author@example.com', 'author');
       const offerId = await createOffer(author.accessToken);
@@ -211,6 +212,8 @@ describe('Comments flow (e2e)', () => {
       });
 
       expect(reply.status).toBe(201);
+      // a direct reply to a root carries no replyTo tag
+      expect((reply.body as CommentBody).replyTo).toBeNull();
 
       const thread = await request(app.getHttpServer()).get(
         `/offers/${offerId}/comments`,
@@ -227,25 +230,50 @@ describe('Comments flow (e2e)', () => {
       expect(repliesBody.items[0].content).toBe('Yes it does');
     });
 
-    it('rejects replying to a reply with comment.cannot_reply_to_reply', async () => {
+    it('flattens a reply-to-a-reply under the root and tags replyTo', async () => {
       const author = await registerUser('author@example.com', 'author');
+      const bob = await registerUser('bob@example.com', 'bob');
       const offerId = await createOffer(author.accessToken);
+
       const root = await comment(author.accessToken, offerId, {
         content: 'root',
       });
-      const reply = await comment(author.accessToken, offerId, {
-        content: 'reply',
-        parentId: (root.body as CommentBody).id,
+      const rootId = (root.body as CommentBody).id;
+
+      const reply = await comment(bob.accessToken, offerId, {
+        content: 'first reply',
+        parentId: rootId,
+      });
+      const replyId = (reply.body as CommentBody).id;
+
+      // reply to the reply: must be accepted, flattened under the root
+      const nested = await comment(author.accessToken, offerId, {
+        content: 'answering bob',
+        parentId: replyId,
+      });
+      expect(nested.status).toBe(201);
+      expect((nested.body as CommentBody).replyTo).toEqual({
+        id: replyId,
+        username: 'bob',
       });
 
-      const res = await comment(author.accessToken, offerId, {
-        content: 'reply to reply',
-        parentId: (reply.body as CommentBody).id,
-      });
-      const body = res.body as ErrorBody;
+      // both replies live flat under the root → replyCount = 2
+      const thread = await request(app.getHttpServer()).get(
+        `/offers/${offerId}/comments`,
+      );
+      const threadBody = thread.body as CommentListBody;
+      expect(threadBody.items).toHaveLength(1);
+      expect(threadBody.items[0].replyCount).toBe(2);
 
-      expect(res.status).toBe(400);
-      expect(body.key).toBe('comment.cannot_reply_to_reply');
+      const replies = await request(app.getHttpServer()).get(
+        `/offers/${offerId}/comments/${rootId}/replies`,
+      );
+      const repliesBody = replies.body as CommentListBody;
+      expect(repliesBody.items).toHaveLength(2);
+      const nestedItem = repliesBody.items.find(
+        (c) => c.content === 'answering bob',
+      );
+      expect(nestedItem?.replyTo).toEqual({ id: replyId, username: 'bob' });
     });
   });
 
@@ -356,56 +384,71 @@ describe('Comments flow (e2e)', () => {
     });
   });
 
-  describe('Likes', () => {
-    it('likes and unlikes a comment, reflecting likeCount and liked', async () => {
+  describe('Votes', () => {
+    it('casts, flips and withdraws a vote, reflecting score and userVote', async () => {
       const author = await registerUser('author@example.com', 'author');
-      const liker = await registerUser('l@example.com', 'liker');
+      const voter = await registerUser('v@example.com', 'voter');
       const offerId = await createOffer(author.accessToken);
       const created = await comment(author.accessToken, offerId, {
-        content: 'like me',
+        content: 'vote me',
       });
       const id = (created.body as CommentBody).id;
 
-      const liked = await request(app.getHttpServer())
-        .post(`/offers/${offerId}/comments/${id}/likes`)
-        .set('Authorization', `Bearer ${liker.accessToken}`);
-      expect(liked.status).toBe(200);
-      expect(liked.body as LikeBody).toEqual({ likeCount: 1, liked: true });
+      const up = await request(app.getHttpServer())
+        .post(`/offers/${offerId}/comments/${id}/votes`)
+        .set('Authorization', `Bearer ${voter.accessToken}`)
+        .send({ type: VoteType.UP });
+      expect(up.status).toBe(200);
+      expect(up.body as VoteBody).toEqual({ score: 1, userVote: VoteType.UP });
 
-      // idempotent re-like
-      const reliked = await request(app.getHttpServer())
-        .post(`/offers/${offerId}/comments/${id}/likes`)
-        .set('Authorization', `Bearer ${liker.accessToken}`);
-      expect((reliked.body as LikeBody).likeCount).toBe(1);
+      // idempotent re-cast of the same vote
+      const reUp = await request(app.getHttpServer())
+        .post(`/offers/${offerId}/comments/${id}/votes`)
+        .set('Authorization', `Bearer ${voter.accessToken}`)
+        .send({ type: VoteType.UP });
+      expect((reUp.body as VoteBody).score).toBe(1);
 
-      const unliked = await request(app.getHttpServer())
-        .delete(`/offers/${offerId}/comments/${id}/likes`)
-        .set('Authorization', `Bearer ${liker.accessToken}`);
-      expect(unliked.body as LikeBody).toEqual({ likeCount: 0, liked: false });
+      // flip UP -> DOWN : score goes from 1 to -1
+      const down = await request(app.getHttpServer())
+        .post(`/offers/${offerId}/comments/${id}/votes`)
+        .set('Authorization', `Bearer ${voter.accessToken}`)
+        .send({ type: VoteType.DOWN });
+      expect(down.body as VoteBody).toEqual({
+        score: -1,
+        userVote: VoteType.DOWN,
+      });
+
+      const withdrawn = await request(app.getHttpServer())
+        .delete(`/offers/${offerId}/comments/${id}/votes`)
+        .set('Authorization', `Bearer ${voter.accessToken}`);
+      expect(withdrawn.body as VoteBody).toEqual({ score: 0, userVote: null });
     });
 
-    it('exposes liked=true in the thread for the viewer who liked', async () => {
+    it('exposes the viewer userVote in the thread, null for anonymous', async () => {
       const author = await registerUser('author@example.com', 'author');
-      const liker = await registerUser('l@example.com', 'liker');
+      const voter = await registerUser('v@example.com', 'voter');
       const offerId = await createOffer(author.accessToken);
       const created = await comment(author.accessToken, offerId, {
-        content: 'like me',
+        content: 'vote me',
       });
       const id = (created.body as CommentBody).id;
       await request(app.getHttpServer())
-        .post(`/offers/${offerId}/comments/${id}/likes`)
-        .set('Authorization', `Bearer ${liker.accessToken}`);
+        .post(`/offers/${offerId}/comments/${id}/votes`)
+        .set('Authorization', `Bearer ${voter.accessToken}`)
+        .send({ type: VoteType.UP });
 
-      const asLiker = await request(app.getHttpServer())
+      const asVoter = await request(app.getHttpServer())
         .get(`/offers/${offerId}/comments`)
-        .set('Authorization', `Bearer ${liker.accessToken}`);
-      expect((asLiker.body as CommentListBody).items[0].liked).toBe(true);
+        .set('Authorization', `Bearer ${voter.accessToken}`);
+      expect((asVoter.body as CommentListBody).items[0].userVote).toBe(
+        VoteType.UP,
+      );
 
       const anonymous = await request(app.getHttpServer()).get(
         `/offers/${offerId}/comments`,
       );
-      expect((anonymous.body as CommentListBody).items[0].liked).toBe(false);
-      expect((anonymous.body as CommentListBody).items[0].likeCount).toBe(1);
+      expect((anonymous.body as CommentListBody).items[0].userVote).toBeNull();
+      expect((anonymous.body as CommentListBody).items[0].score).toBe(1);
     });
   });
 
