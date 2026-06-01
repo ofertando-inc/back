@@ -1,5 +1,7 @@
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  Comment,
   Offer,
   OfferStatus,
   Report,
@@ -17,6 +19,35 @@ import type { OfferResponse } from '../offers/types/offer-response.type';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PublicUser } from '../users/types/public-user.type';
 import { ModerationService } from './moderation.service';
+
+type CommentWithRelations = Comment & {
+  user: { id: string; username: string };
+  offer: { id: string; title: string };
+};
+
+function buildModerationComment(
+  overrides: Partial<CommentWithRelations> = {},
+): CommentWithRelations {
+  return {
+    id: 'comment-1',
+    content: 'reported comment',
+    createdAt: new Date('2024-06-01T00:00:00Z'),
+    updatedAt: new Date('2024-06-01T00:00:00Z'),
+    editedAt: null,
+    deletedAt: null,
+    hiddenAt: null,
+    score: 0,
+    replyCount: 0,
+    reportCount: 5,
+    userId: 'author-1',
+    offerId: 'offer-1',
+    parentId: null,
+    replyToId: null,
+    user: { id: 'author-1', username: 'author' },
+    offer: { id: 'offer-1', title: 'Title' },
+    ...overrides,
+  };
+}
 
 function buildOffer(overrides: Partial<Offer> = {}): Offer {
   return {
@@ -95,18 +126,28 @@ describe('ModerationService', () => {
     offer: { findUnique: jest.Mock; update: jest.Mock };
     user: { findUnique: jest.Mock; update: jest.Mock };
     report: { findMany: jest.Mock; deleteMany: jest.Mock };
+    comment: { findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock };
+    commentReport: { deleteMany: jest.Mock };
     $transaction: jest.Mock;
   };
   let offersService: jest.Mocked<Pick<OffersService, 'findAll' | 'findById'>>;
   let refreshTokensService: jest.Mocked<
     Pick<RefreshTokensService, 'revokeAllForUser'>
   >;
+  let commentThreshold = 3;
 
   beforeEach(async () => {
+    commentThreshold = 3;
     prisma = {
       offer: { findUnique: jest.fn(), update: jest.fn() },
       user: { findUnique: jest.fn(), update: jest.fn() },
       report: { findMany: jest.fn(), deleteMany: jest.fn() },
+      comment: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        findMany: jest.fn(),
+      },
+      commentReport: { deleteMany: jest.fn() },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     offersService = {
@@ -123,6 +164,10 @@ describe('ModerationService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: OffersService, useValue: offersService },
         { provide: RefreshTokensService, useValue: refreshTokensService },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn(() => commentThreshold) },
+        },
       ],
     }).compile();
 
@@ -377,6 +422,138 @@ describe('ModerationService', () => {
         key: ErrorKey.UserInvalidStatusTransition,
       });
       expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listReportedComments', () => {
+    it('queries live, non-hidden comments above the threshold, most-reported first', async () => {
+      prisma.comment.findMany.mockResolvedValue([
+        buildModerationComment({ id: 'c1', reportCount: 8 }),
+      ]);
+
+      const result = await service.listReportedComments({ limit: 5 });
+
+      const calls = prisma.comment.findMany.mock.calls as unknown[][];
+      const call = calls[0]?.[0] as {
+        where: { reportCount: unknown; hiddenAt: null; deletedAt: null };
+        orderBy: unknown;
+      };
+      expect(call.where).toMatchObject({
+        reportCount: { gte: 3 },
+        hiddenAt: null,
+        deletedAt: null,
+      });
+      expect(call.orderBy).toEqual([
+        { reportCount: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'desc' },
+      ]);
+      expect(result.items[0]).toMatchObject({
+        id: 'c1',
+        reportCount: 8,
+        user: { id: 'author-1', username: 'author' },
+        offer: { id: 'offer-1', title: 'Title' },
+      });
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('returns a composite reportCount cursor when more items exist', async () => {
+      prisma.comment.findMany.mockResolvedValue([
+        buildModerationComment({ id: 'c1', reportCount: 9 }),
+        buildModerationComment({ id: 'c2', reportCount: 7 }),
+        buildModerationComment({ id: 'c3', reportCount: 5 }),
+      ]);
+
+      const result = await service.listReportedComments({ limit: 2 });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.nextCursor).not.toBeNull();
+    });
+  });
+
+  describe('hideComment', () => {
+    it('stamps hiddenAt and returns the summary', async () => {
+      prisma.comment.findUnique
+        .mockResolvedValueOnce(buildModerationComment())
+        .mockResolvedValueOnce(
+          buildModerationComment({
+            hiddenAt: new Date('2024-06-02T00:00:00Z'),
+          }),
+        );
+
+      const result = await service.hideComment('comment-1');
+
+      expect(prisma.comment.update).toHaveBeenCalledWith({
+        where: { id: 'comment-1' },
+        data: { hiddenAt: expect.any(Date) as unknown as Date },
+      });
+      expect(result.id).toBe('comment-1');
+      expect(result.hiddenAt).not.toBeNull();
+    });
+
+    it('throws comment.not_found when the comment is missing or author-deleted', async () => {
+      prisma.comment.findUnique.mockResolvedValue(
+        buildModerationComment({ deletedAt: new Date() }),
+      );
+
+      await expect(service.hideComment('comment-1')).rejects.toMatchObject({
+        key: ErrorKey.CommentNotFound,
+      });
+      expect(prisma.comment.update).not.toHaveBeenCalled();
+    });
+
+    it('throws comment.invalid_status_transition when already hidden', async () => {
+      prisma.comment.findUnique.mockResolvedValue(
+        buildModerationComment({ hiddenAt: new Date() }),
+      );
+
+      await expect(service.hideComment('comment-1')).rejects.toMatchObject({
+        key: ErrorKey.CommentInvalidStatusTransition,
+      });
+      expect(prisma.comment.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('restoreComment', () => {
+    it('clears hiddenAt, resets reportCount and purges reports', async () => {
+      prisma.comment.findUnique
+        .mockResolvedValueOnce(
+          buildModerationComment({ hiddenAt: new Date(), reportCount: 6 }),
+        )
+        .mockResolvedValueOnce(
+          buildModerationComment({ hiddenAt: null, reportCount: 0 }),
+        );
+
+      const result = await service.restoreComment('comment-1');
+
+      expect(prisma.commentReport.deleteMany).toHaveBeenCalledWith({
+        where: { commentId: 'comment-1' },
+      });
+      expect(prisma.comment.update).toHaveBeenCalledWith({
+        where: { id: 'comment-1' },
+        data: { hiddenAt: null, reportCount: 0 },
+      });
+      expect(result.hiddenAt).toBeNull();
+      expect(result.reportCount).toBe(0);
+    });
+
+    it('throws comment.not_found when the comment is missing or author-deleted', async () => {
+      prisma.comment.findUnique.mockResolvedValue(null);
+
+      await expect(service.restoreComment('missing')).rejects.toMatchObject({
+        key: ErrorKey.CommentNotFound,
+      });
+    });
+
+    it('throws comment.invalid_status_transition when nothing to clear', async () => {
+      prisma.comment.findUnique.mockResolvedValue(
+        buildModerationComment({ hiddenAt: null, reportCount: 0 }),
+      );
+
+      await expect(service.restoreComment('comment-1')).rejects.toMatchObject({
+        key: ErrorKey.CommentInvalidStatusTransition,
+      });
+      expect(prisma.commentReport.deleteMany).not.toHaveBeenCalled();
     });
   });
 });
