@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- Pinned `@hono/node-server` to `^1.19.13` via a package `overrides` entry to clear a `serveStatic` middleware-bypass advisory (repeated-slash path normalization). The package is a transitive of the Prisma dev tooling (`prisma` → `@prisma/dev`), not part of the runtime, so the application was not exploitable; the override keeps the dependency tree clean while Dependabot is blocked by Prisma's pinned range
+- Bumped the transitive `brace-expansion` (under `glob`, dev tooling) from `5.0.5` to `5.0.6` to clear a regex DoS advisory (GHSA-jxxr-4gwj-5jf2); `npm audit` now reports zero vulnerabilities
+
 ## [0.8.0] - 2026-06-01
 
 ### Added
