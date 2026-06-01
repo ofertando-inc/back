@@ -293,10 +293,29 @@ export class ModerationService {
       );
     }
 
-    await this.prisma.comment.update({
-      where: { id: commentId },
-      data: { hiddenAt: new Date() },
-    });
+    // Hiding removes the comment from public view, so it stops counting toward
+    // the offer commentCount (and its root replyCount), like an author deletion.
+    const ops: Prisma.PrismaPromise<unknown>[] = [
+      this.prisma.comment.update({
+        where: { id: commentId },
+        data: { hiddenAt: new Date() },
+      }),
+      this.prisma.offer.update({
+        where: { id: comment.offerId },
+        data: { commentCount: { decrement: 1 } },
+      }),
+    ];
+
+    if (comment.parentId) {
+      ops.push(
+        this.prisma.comment.update({
+          where: { id: comment.parentId },
+          data: { replyCount: { decrement: 1 } },
+        }),
+      );
+    }
+
+    await this.prisma.$transaction(ops);
 
     return this.findCommentSummary(commentId);
   }
@@ -318,13 +337,35 @@ export class ModerationService {
       );
     }
 
-    await this.prisma.$transaction([
+    const ops: Prisma.PrismaPromise<unknown>[] = [
       this.prisma.commentReport.deleteMany({ where: { commentId } }),
       this.prisma.comment.update({
         where: { id: commentId },
         data: { hiddenAt: null, reportCount: 0 },
       }),
-    ]);
+    ];
+
+    // Only a hidden comment was uncounted; un-hiding it restores the counts.
+    // A merely-reported (still visible) comment was always counted.
+    if (comment.hiddenAt) {
+      ops.push(
+        this.prisma.offer.update({
+          where: { id: comment.offerId },
+          data: { commentCount: { increment: 1 } },
+        }),
+      );
+
+      if (comment.parentId) {
+        ops.push(
+          this.prisma.comment.update({
+            where: { id: comment.parentId },
+            data: { replyCount: { increment: 1 } },
+          }),
+        );
+      }
+    }
+
+    await this.prisma.$transaction(ops);
 
     return this.findCommentSummary(commentId);
   }

@@ -347,12 +347,13 @@ describe('CommentsService', () => {
         where: { offerId: string; parentId: null; OR: unknown[] };
       };
       expect(call.where).toMatchObject({ offerId: 'offer-1', parentId: null });
-      // Live comments OR tombstones (deleted with a surviving reply).
+      // Live comments OR tombstones (removed by author or moderator, with a
+      // surviving live reply).
       expect(call.where.OR).toEqual([
-        { deletedAt: null },
+        { deletedAt: null, hiddenAt: null },
         {
-          deletedAt: { not: null },
-          replies: { some: { deletedAt: null } },
+          OR: [{ deletedAt: { not: null } }, { hiddenAt: { not: null } }],
+          replies: { some: { deletedAt: null, hiddenAt: null } },
         },
       ]);
       expect(result.items[0].userVote).toBe(VoteType.UP);
@@ -370,7 +371,23 @@ describe('CommentsService', () => {
         id: 'c1',
         content: null,
         deleted: true,
+        hidden: false,
         replyCount: 2,
+      });
+    });
+
+    it('masks a moderator-hidden comment with hidden=true', async () => {
+      comment.findMany.mockResolvedValue([
+        buildComment({ id: 'c1', hiddenAt: new Date(), replyCount: 1 }),
+      ]);
+
+      const result = await service.findThread('offer-1', {});
+
+      expect(result.items[0]).toMatchObject({
+        id: 'c1',
+        content: null,
+        deleted: false,
+        hidden: true,
       });
     });
 
