@@ -18,6 +18,10 @@ export const ErrorKey = {
 
   ReportOfferNotReportable: 'report.offer_not_reportable',
 
+  CommentNotFound: 'comment.not_found',
+  CommentForbidden: 'comment.forbidden',
+  CommentOfferNotCommentable: 'comment.offer_not_commentable',
+
   PaginationInvalidCursor: 'pagination.invalid_cursor',
 
   ValidationFailed: 'validation.failed',

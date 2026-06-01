@@ -994,6 +994,260 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Comments",
+      "item": [
+        {
+          "name": "Create comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('create returns 201', function () {",
+                  "  pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const body = pm.response.json();",
+                  "if (body.id) {",
+                  "  pm.environment.set('commentId', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Does this deal still work?\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "{{offerId}}", "comments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create reply",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.environment.set('replyId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Yes, confirmed working today\",\n  \"parentId\": \"{{commentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "{{offerId}}", "comments"]
+            },
+            "description": "Provide parentId to reply to a top-level comment. A direct reply to a root has replyTo = null."
+          },
+          "response": []
+        },
+        {
+          "name": "Reply to a reply",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Replying to your reply\",\n  \"parentId\": \"{{replyId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "{{offerId}}", "comments"]
+            },
+            "description": "Replying to a reply is allowed. The new comment is flattened under the thread root (its parentId becomes the root), and replyTo = { id, username } is returned so the client can show 'replying to @username'."
+          },
+          "response": []
+        },
+        {
+          "name": "List thread (top-level)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "{{offerId}}", "comments"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Public. Each item carries likeCount, replyCount, and a viewer-aware liked flag (false when anonymous)."
+          },
+          "response": []
+        },
+        {
+          "name": "List replies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}/replies?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "comments",
+                "{{commentId}}",
+                "replies"
+              ],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Edit comment",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Edited: this deal still works\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "{{offerId}}", "comments", "{{commentId}}"]
+            },
+            "description": "Author only. Sets editedAt."
+          },
+          "response": []
+        },
+        {
+          "name": "Upvote comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('vote returns 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('userVote is UP', function () {",
+                  "  pm.expect(pm.response.json().userVote).to.eql('UP');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"type\": \"UP\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}/votes",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "comments",
+                "{{commentId}}",
+                "votes"
+              ]
+            },
+            "description": "Cast or change a vote. type is UP or DOWN. Re-casting the same type is a no-op; the opposite type flips the vote. Returns { score, userVote }."
+          },
+          "response": []
+        },
+        {
+          "name": "Downvote comment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"type\": \"DOWN\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}/votes",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "comments",
+                "{{commentId}}",
+                "votes"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remove comment vote",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}/votes",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "comments",
+                "{{commentId}}",
+                "votes"
+              ]
+            },
+            "description": "Withdraw the current user's vote. Idempotent. Returns { score, userVote: null }."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete comment",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('delete returns 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('comment is marked deleted', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.deleted).to.eql(true);",
+                  "  pm.expect(body.content).to.eql(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "{{offerId}}", "comments", "{{commentId}}"]
+            },
+            "description": "Author or admin. Soft-delete; cascades to replies when the comment is top-level."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
+import { CommentsModule } from './comments/comments.module';
 import { authConfig } from './config/auth.config';
 import { offerExpirationConfig } from './config/offer-expiration.config';
 import { ModerationModule } from './moderation/moderation.module';
@@ -33,6 +34,7 @@ import { VotesModule } from './votes/votes.module';
     VotesModule,
     ReportsModule,
     ModerationModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [

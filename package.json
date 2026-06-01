@@ -1,6 +1,6 @@
 {
   "name": "back",
-  "version": "0.6.0",
+  "version": "0.8.0",
   "description": "",
   "author": "",
   "private": true,
@@ -65,7 +65,7 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^22.10.7",
+    "@types/node": "^24.12.4",
     "@types/passport-jwt": "^4.0.1",
     "@types/supertest": "^7.2.0",
     "eslint": "^10.4.1",

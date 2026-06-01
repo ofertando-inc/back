@@ -5,18 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.8.0] - 2026-06-01
 
 ### Added
 
 - Added Dependabot configuration (`.github/dependabot.yml`) for npm, GitHub Actions, and Docker dependencies, targeting the `dev` branch with grouped weekly minor/patch updates
 - Added a scheduled `npm audit` workflow (`.github/workflows/audit.yml`) that fails on high/critical advisories, as a safety net alongside Dependabot security alerts
 - Added `docs/dependencies.md` documenting the dependency update process and merge rules
+- Added the `Comment` and `CommentVote` Prisma models (with a flat one-level self-relation for replies, plus a `replyToId` self-relation tagging which comment a reply answers) plus a `commentCount` column on offers, and the matching migrations
+- Added comment error keys (`comment.not_found`, `comment.forbidden`, `comment.offer_not_commentable`)
+- Added comment DTOs (`CreateCommentDto` with optional `parentId`, `UpdateCommentDto`, `ListCommentsQueryDto`, `VoteCommentDto`) and the `CommentResponse` / `CommentVoteResponse` types
+- Added a `CommentsService` with flat one-level threading: replies stay at one level (`parentId` is always normalized to the thread root), but replying to a reply is allowed and recorded as `replyTo: { id, username }` so the client can show "replying to @user"; cursor-paginated thread and reply listings, owner edit with `editedAt`, and tombstone soft-delete (a deleted comment keeps its replies, is exposed with `deleted: true` and masked content while it still has live replies, otherwise it drops out of listings), with the offer `commentCount` / root `replyCount` kept accurate inside transactions
+- Added `replyTo`, a `deleted` flag and nullable `content` to `CommentResponse`; `DELETE` on a comment now returns `200` with the resulting (tombstoned) comment instead of `204`
+- Added a `CommentVotesService` mirroring the offer voting model: up/down votes with a denormalized `score` on the comment, idempotent re-cast, vote flip (UP↔DOWN), and withdraw, all inside transactions; `CommentResponse` exposes `score` and the viewer's `userVote` (`UP`/`DOWN`/`null`)
+- Added a `CommentOwnerGuard` (admin or author) reusing the abstract owner guard, and a `CommentsController` exposing public thread/replies listings and authenticated create, edit, soft-delete, and up/down vote (`POST`/`DELETE /:commentId/votes`) under `/offers/:offerId/comments`
+- Registered `CommentsModule` in `AppModule`; the offer `commentCount` now surfaces automatically in every `OfferResponse`
+- Added e2e tests covering comment creation, validation, non-commentable offers, flat threading (direct reply plus reply-to-a-reply flattened under the root with a `replyTo` tag), owner edit, tombstone delete (placeholder kept when replies survive, dropped otherwise), comment voting (cast/flip/withdraw with viewer-aware `userVote` and `score`), and thread cursor pagination
+- Updated the Postman collection with a Comments folder (create, reply, reply to a reply, list thread, list replies, edit, upvote, downvote, remove vote, delete) and `commentId` / `replyId` environment variables
 
 ### Changed
 
 - Relaxed `@typescript-eslint/no-unnecessary-type-assertion` in test files so the deliberate Jest mock/matcher type assertions stay valid under newer `typescript-eslint` releases
 - Replaced a redundant `as DateCursor` assertion in `OffersService` with a type annotation
+- Aligned `@types/node` to the major matching the Node 24 runtime (`^24`) instead of `^22`
 
 ## [0.7.0] - 2026-05-31
 
