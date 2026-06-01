@@ -325,7 +325,7 @@ export class OffersService {
         ],
       };
     }
-    const c = cursor as DateCursor;
+    const c: DateCursor = cursor;
     const createdAt = new Date(c.createdAt);
     return {
       OR: [{ createdAt: { lt: createdAt } }, { createdAt, id: { lt: c.id } }],
