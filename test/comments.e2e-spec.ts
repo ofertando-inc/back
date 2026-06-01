@@ -24,6 +24,7 @@ type CommentBody = {
   replyCount: number;
   userVote: VoteType | null;
   deleted: boolean;
+  hidden: boolean;
 };
 
 type CommentListBody = {
@@ -473,6 +474,89 @@ describe('Comments flow (e2e)', () => {
       const secondBody = second.body as CommentListBody;
       expect(secondBody.items).toHaveLength(1);
       expect(secondBody.nextCursor).toBeNull();
+    });
+  });
+
+  describe('Reporting', () => {
+    function reportComment(
+      token: string,
+      offerId: string,
+      commentId: string,
+      body: { reason: string; note?: string },
+    ) {
+      return request(app.getHttpServer())
+        .post(`/offers/${offerId}/comments/${commentId}/reports`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+    }
+
+    it('reports a comment and increments reportCount idempotently', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const reporter = await registerUser('r@example.com', 'reporter');
+      const offerId = await createOffer(author.accessToken);
+      const created = await comment(author.accessToken, offerId, {
+        content: 'report me',
+      });
+      const id = (created.body as CommentBody).id;
+
+      const first = await reportComment(reporter.accessToken, offerId, id, {
+        reason: 'SPAM',
+        note: 'looks like an ad',
+      });
+      expect(first.status).toBe(201);
+      expect((first.body as { reportCount: number }).reportCount).toBe(1);
+
+      // same user re-reporting does not double count
+      const again = await reportComment(reporter.accessToken, offerId, id, {
+        reason: 'ABUSE',
+      });
+      expect((again.body as { reportCount: number }).reportCount).toBe(1);
+    });
+
+    it('exposes the reporter own report reason via /reports/me', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const reporter = await registerUser('r@example.com', 'reporter');
+      const offerId = await createOffer(author.accessToken);
+      const created = await comment(author.accessToken, offerId, {
+        content: 'report me',
+      });
+      const id = (created.body as CommentBody).id;
+      await reportComment(reporter.accessToken, offerId, id, {
+        reason: 'OFF_TOPIC',
+      });
+
+      const mine = await request(app.getHttpServer())
+        .get(`/offers/${offerId}/comments/${id}/reports/me`)
+        .set('Authorization', `Bearer ${reporter.accessToken}`);
+      expect((mine.body as { reason: string | null }).reason).toBe('OFF_TOPIC');
+    });
+
+    it('rejects reporting without authentication with 401', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const offerId = await createOffer(author.accessToken);
+      const created = await comment(author.accessToken, offerId, {
+        content: 'report me',
+      });
+      const id = (created.body as CommentBody).id;
+
+      const res = await request(app.getHttpServer())
+        .post(`/offers/${offerId}/comments/${id}/reports`)
+        .send({ reason: 'SPAM' });
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects reporting a missing comment with comment.not_found', async () => {
+      const reporter = await registerUser('r@example.com', 'reporter');
+      const offerId = await createOffer(reporter.accessToken);
+
+      const res = await reportComment(
+        reporter.accessToken,
+        offerId,
+        '00000000-0000-0000-0000-000000000000',
+        { reason: 'SPAM' },
+      );
+      expect(res.status).toBe(404);
+      expect((res.body as ErrorBody).key).toBe('comment.not_found');
     });
   });
 });
