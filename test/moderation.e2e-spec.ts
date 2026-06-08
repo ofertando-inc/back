@@ -56,6 +56,32 @@ type OfferListBody = {
 
 type ErrorBody = { key: string; statusCode: number };
 
+type CommentModerationBody = {
+  id: string;
+  content: string;
+  reportCount: number;
+  hiddenAt: string | null;
+  createdAt: string;
+  user: { id: string; username: string };
+  offer: { id: string; title: string };
+};
+
+type CommentModerationListBody = {
+  items: CommentModerationBody[];
+  nextCursor: string | null;
+};
+
+type ThreadItem = {
+  id: string;
+  content: string | null;
+  hidden: boolean;
+  deleted: boolean;
+};
+
+type ThreadListBody = { items: ThreadItem[]; nextCursor: string | null };
+
+type OfferDetailBody = { id: string; commentCount: number };
+
 function extractCookie(name: string, setCookieHeader: unknown): string {
   const cookies = Array.isArray(setCookieHeader)
     ? (setCookieHeader as string[])
@@ -494,6 +520,192 @@ describe('Moderation flow (e2e)', () => {
 
       expect(res.status).toBe(400);
       expect(body.key).toBe('user.invalid_status_transition');
+    });
+  });
+
+  describe('Comment moderation', () => {
+    function postComment(
+      token: string,
+      offerId: string,
+      content: string,
+      parentId?: string,
+    ) {
+      return request(app.getHttpServer())
+        .post(`/offers/${offerId}/comments`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ content, parentId });
+    }
+
+    function reportComment(
+      token: string,
+      offerId: string,
+      commentId: string,
+      reason = 'SPAM',
+    ) {
+      return request(app.getHttpServer())
+        .post(`/offers/${offerId}/comments/${commentId}/reports`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ reason });
+    }
+
+    // COMMENT_REPORT_THRESHOLD is 2 in tests: two distinct reporters flag it.
+    async function flagComment(offerId: string, commentId: string) {
+      const r1 = await registerUser('rep1@example.com', 'rep1');
+      const r2 = await registerUser('rep2@example.com', 'rep2');
+      await reportComment(r1.accessToken, offerId, commentId);
+      await reportComment(r2.accessToken, offerId, commentId);
+    }
+
+    describe('Authorization', () => {
+      it('rejects /admin/comments without authentication with 401', async () => {
+        const res = await request(app.getHttpServer()).get('/admin/comments');
+        expect(res.status).toBe(401);
+      });
+
+      it('rejects /admin/comments as a regular USER with 403', async () => {
+        const user = await registerUser('user@example.com', 'user');
+        const res = await request(app.getHttpServer())
+          .get('/admin/comments')
+          .set('Authorization', `Bearer ${user.accessToken}`);
+        expect(res.status).toBe(403);
+        expect((res.body as ErrorBody).key).toBe('auth.forbidden');
+      });
+
+      it('allows /admin/comments as ADMIN', async () => {
+        const admin = await registerAdmin('admin@example.com', 'admin');
+        const res = await request(app.getHttpServer())
+          .get('/admin/comments')
+          .set('Authorization', `Bearer ${admin.accessToken}`);
+        expect(res.status).toBe(200);
+      });
+    });
+
+    it('lists comments that crossed the report threshold', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'spam!');
+      const commentId = (created.body as { id: string }).id;
+
+      await flagComment(offer.id, commentId);
+
+      const queue = await request(app.getHttpServer())
+        .get('/admin/comments')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      const body = queue.body as CommentModerationListBody;
+
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]).toMatchObject({
+        id: commentId,
+        reportCount: 2,
+        content: 'spam!',
+        user: { username: 'author' },
+        offer: { id: offer.id },
+      });
+    });
+
+    it('hides a reported comment: masked in the thread, dropped from the queue, commentCount adjusted', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const root = await postComment(author.accessToken, offer.id, 'bad root');
+      const rootId = (root.body as { id: string }).id;
+      // a reply keeps the thread alive so the hidden root shows as a tombstone
+      await postComment(author.accessToken, offer.id, 'a reply', rootId);
+      await flagComment(offer.id, rootId);
+
+      const hidden = await request(app.getHttpServer())
+        .patch(`/admin/comments/${rootId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(hidden.status).toBe(200);
+      expect((hidden.body as CommentModerationBody).hiddenAt).not.toBeNull();
+
+      // masked (content null, hidden flag) in the public thread
+      const thread = await request(app.getHttpServer()).get(
+        `/offers/${offer.id}/comments`,
+      );
+      const root2 = (thread.body as ThreadListBody).items.find(
+        (c) => c.id === rootId,
+      );
+      expect(root2?.content).toBeNull();
+      expect(root2?.hidden).toBe(true);
+
+      // gone from the moderation queue
+      const queue = await request(app.getHttpServer())
+        .get('/admin/comments')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect((queue.body as CommentModerationListBody).items).toHaveLength(0);
+
+      // commentCount dropped (root no longer counted, reply still counts)
+      const detail = await request(app.getHttpServer()).get(
+        `/offers/${offer.id}`,
+      );
+      expect((detail.body as OfferDetailBody).commentCount).toBe(1);
+    });
+
+    it('restores a hidden comment: visible again and reports purged', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'oops');
+      const commentId = (created.body as { id: string }).id;
+      await flagComment(offer.id, commentId);
+      await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      const restored = await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/restore`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(restored.status).toBe(200);
+      expect((restored.body as CommentModerationBody).hiddenAt).toBeNull();
+      expect((restored.body as CommentModerationBody).reportCount).toBe(0);
+
+      // visible again with its content in the thread
+      const thread = await request(app.getHttpServer()).get(
+        `/offers/${offer.id}/comments`,
+      );
+      const item = (thread.body as ThreadListBody).items.find(
+        (c) => c.id === commentId,
+      );
+      expect(item?.content).toBe('oops');
+      expect(item?.hidden).toBe(false);
+    });
+
+    it('rejects reporting a moderator-hidden comment with comment.not_reportable', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'gone');
+      const commentId = (created.body as { id: string }).id;
+      await flagComment(offer.id, commentId);
+      await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      const later = await registerUser('late@example.com', 'late');
+      const res = await reportComment(later.accessToken, offer.id, commentId);
+      expect(res.status).toBe(400);
+      expect((res.body as ErrorBody).key).toBe('comment.not_reportable');
+    });
+
+    it('rejects hiding an already hidden comment with comment.invalid_status_transition', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'x');
+      const commentId = (created.body as { id: string }).id;
+      await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(400);
+      expect((res.body as ErrorBody).key).toBe(
+        'comment.invalid_status_transition',
+      );
     });
   });
 });

@@ -992,6 +992,66 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "List reported comments",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.items && body.items.length) {",
+                  "  pm.environment.set('commentId', body.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Moderation queue: live, non-hidden comments whose reportCount reached COMMENT_REPORT_THRESHOLD, most-reported first. Captures the first commentId."
+          },
+          "response": []
+        },
+        {
+          "name": "Hide comment",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments/{{commentId}}/hide",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments", "{{commentId}}", "hide"]
+            },
+            "description": "Admin only. Hides the comment (sets hiddenAt): masked in the thread and removed from the commentCount. Rejected with comment.invalid_status_transition if already hidden."
+          },
+          "response": []
+        },
+        {
+          "name": "Restore comment",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments/{{commentId}}/restore",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments", "{{commentId}}", "restore"]
+            },
+            "description": "Admin only. Clears hiddenAt, resets reportCount to 0 and purges the reports. Re-counts the comment if it was hidden."
+          },
+          "response": []
         }
       ]
     },
@@ -1244,6 +1304,51 @@
               "path": ["offers", "{{offerId}}", "comments", "{{commentId}}"]
             },
             "description": "Author or admin. Soft-delete; cascades to replies when the comment is top-level."
+          },
+          "response": []
+        },
+        {
+          "name": "Report comment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"SPAM\",\n  \"note\": \"looks like an ad\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}/reports",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "comments",
+                "{{commentId}}",
+                "reports"
+              ]
+            },
+            "description": "Report a comment. reason is one of SPAM, ABUSE, OFF_TOPIC, MISINFORMATION, OTHER; note is optional. One report per user/comment (idempotent). Returns { reportCount }. Rejected with comment.not_reportable if the comment was hidden by a moderator."
+          },
+          "response": []
+        },
+        {
+          "name": "My comment report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}/reports/me",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "comments",
+                "{{commentId}}",
+                "reports",
+                "me"
+              ]
+            },
+            "description": "Returns the current user's report reason for this comment, or null."
           },
           "response": []
         }

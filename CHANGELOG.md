@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Added the `CommentReport` model + `CommentReportReason` enum (`SPAM`, `ABUSE`, `OFF_TOPIC`, `MISINFORMATION`, `OTHER`), and `reportCount` / `hiddenAt` columns on `Comment`, plus the migration
+- Added the `comment.not_reportable` and `comment.invalid_status_transition` error keys, and a dedicated `COMMENT_REPORT_THRESHOLD` config (default 5) wired into every compose file
+- Added a `CommentReportsService` and the `POST /offers/:offerId/comments/:commentId/reports` (one report per user/comment, idempotent, increments `reportCount`) and `GET …/reports/me` endpoints; reporting is rejected on a deleted/cross-offer comment (`comment.not_found`) or a moderator-hidden one (`comment.not_reportable`)
+- Added admin comment moderation in `ModerationService` + `AdminCommentsController`: `GET /admin/comments` (queue of live, non-hidden comments at or above the report threshold, most-reported first), `PATCH /admin/comments/:id/hide` and `PATCH /admin/comments/:id/restore` (clears `hiddenAt`, resets `reportCount`, purges reports), guarded by `JwtAuthGuard + AdminGuard`
+- Generalized comment masking: a comment removed by its author (`deletedAt`) or hidden by a moderator (`hiddenAt`) is masked the same way (content nulled) while threads with a surviving live reply are preserved; `CommentResponse` exposes a `hidden` flag next to `deleted`, and hiding/restoring keeps the offer `commentCount` and root `replyCount` consistent
+- Updated the Postman collection with comment reporting (Comments folder) and admin comment moderation (Moderation folder: list reported comments, hide, restore)
+
 ### Security
 
 - Pinned `@hono/node-server` to `^1.19.13` via a package `overrides` entry to clear a `serveStatic` middleware-bypass advisory (repeated-slash path normalization). The package is a transitive of the Prisma dev tooling (`prisma` → `@prisma/dev`), not part of the runtime, so the application was not exploitable; the override keeps the dependency tree clean while Dependabot is blocked by Prisma's pinned range

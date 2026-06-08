@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { CommentsModule } from './comments/comments.module';
 import { authConfig } from './config/auth.config';
+import { commentReportConfig } from './config/comment-report.config';
 import { offerExpirationConfig } from './config/offer-expiration.config';
 import { ModerationModule } from './moderation/moderation.module';
 import { OffersModule } from './offers/offers.module';
@@ -20,7 +21,12 @@ import { VotesModule } from './votes/votes.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [authConfig, reportConfig, offerExpirationConfig],
+      load: [
+        authConfig,
+        reportConfig,
+        offerExpirationConfig,
+        commentReportConfig,
+      ],
     }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot({

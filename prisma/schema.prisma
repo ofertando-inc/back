@@ -37,6 +37,14 @@ enum ReportReason {
   OTHER
 }
 
+enum CommentReportReason {
+  SPAM
+  ABUSE
+  OFF_TOPIC
+  MISINFORMATION
+  OTHER
+}
+
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
@@ -47,12 +55,13 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  offers        Offer[]
-  votes         Vote[]
-  reports       Report[]
-  refreshTokens RefreshToken[]
-  comments      Comment[]
-  commentVotes  CommentVote[]
+  offers         Offer[]
+  votes          Vote[]
+  reports        Report[]
+  refreshTokens  RefreshToken[]
+  comments       Comment[]
+  commentVotes   CommentVote[]
+  commentReports CommentReport[]
 
   @@map("users")
 }
@@ -142,26 +151,45 @@ model Comment {
   content    String
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
-  editedAt   DateTime?
-  deletedAt  DateTime?
-  score      Int       @default(0)
-  replyCount Int       @default(0)
+  editedAt    DateTime?
+  deletedAt   DateTime?
+  hiddenAt    DateTime?
+  score       Int       @default(0)
+  replyCount  Int       @default(0)
+  reportCount Int       @default(0)
 
   userId    String
   offerId   String
   parentId  String?
   replyToId String?
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  offer     Offer         @relation(fields: [offerId], references: [id], onDelete: Cascade)
-  parent    Comment?      @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   Comment[]     @relation("CommentThread")
-  replyTo   Comment?      @relation("CommentReplyTo", fields: [replyToId], references: [id], onDelete: SetNull)
-  repliedBy Comment[]     @relation("CommentReplyTo")
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer     Offer           @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  parent    Comment?        @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[]       @relation("CommentThread")
+  replyTo   Comment?        @relation("CommentReplyTo", fields: [replyToId], references: [id], onDelete: SetNull)
+  repliedBy Comment[]       @relation("CommentReplyTo")
   votes     CommentVote[]
+  reports   CommentReport[]
 
   @@index([offerId])
   @@index([parentId])
   @@map("comments")
+}
+
+model CommentReport {
+  id        String              @id @default(uuid())
+  reason    CommentReportReason
+  note      String?
+  createdAt DateTime            @default(now())
+
+  userId    String
+  commentId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, commentId])
+  @@index([commentId])
+  @@map("comment_reports")
 }
 
 model CommentVote {
