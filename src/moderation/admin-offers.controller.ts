@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -19,6 +20,7 @@ import { OffersExpirationService } from '../offers/offers-expiration.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
 import type { PublicUser } from '../users/types/public-user.type';
 import { ListReportsQueryDto } from './dto/list-reports-query.dto';
+import { ModerationDecisionDto } from './dto/moderation-decision.dto';
 import { ModerationService } from './moderation.service';
 import type { OfferReportDetail } from './types/report-detail.type';
 
@@ -49,24 +51,27 @@ export class AdminOffersController {
   disable(
     @Param('id') id: string,
     @CurrentUser() admin: PublicUser,
+    @Body() decision: ModerationDecisionDto,
   ): Promise<OfferResponse> {
-    return this.moderationService.disableOffer(id, admin.id);
+    return this.moderationService.disableOffer(id, admin.id, decision);
   }
 
   @Patch(':id/dismiss')
   dismiss(
     @Param('id') id: string,
     @CurrentUser() admin: PublicUser,
+    @Body() decision: ModerationDecisionDto,
   ): Promise<OfferResponse> {
-    return this.moderationService.dismissOfferReports(id, admin.id);
+    return this.moderationService.dismissOfferReports(id, admin.id, decision);
   }
 
   @Patch(':id/restore')
   restore(
     @Param('id') id: string,
     @CurrentUser() admin: PublicUser,
+    @Body() decision: ModerationDecisionDto,
   ): Promise<OfferResponse> {
-    return this.moderationService.restoreOffer(id, admin.id);
+    return this.moderationService.restoreOffer(id, admin.id, decision);
   }
 
   @Get(':id/reports')

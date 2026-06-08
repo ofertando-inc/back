@@ -1044,13 +1044,17 @@
           "name": "Hide comment",
           "request": {
             "method": "PATCH",
-            "header": [],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"spam\",\n  \"note\": \"obvious ad\"\n}"
+            },
             "url": {
               "raw": "{{baseUrl}}/admin/comments/{{commentId}}/hide",
               "host": ["{{baseUrl}}"],
               "path": ["admin", "comments", "{{commentId}}", "hide"]
             },
-            "description": "Admin only. Hides the comment (sets hiddenAt): masked in the thread and removed from the commentCount. Rejected with comment.invalid_status_transition if already hidden."
+            "description": "Admin only. Hides the comment (sets hiddenAt): masked in the thread and removed from the commentCount. Body { reason?, note? } is optional and recorded in the moderation log. Rejected with comment.invalid_status_transition if already hidden."
           },
           "response": []
         },
@@ -1115,6 +1119,24 @@
               ]
             },
             "description": "Admin only. Lists the reports on an offer: { id, reason, note, user{id,username}, createdAt }, newest first. note maps the legacy report `comment` text field."
+          },
+          "response": []
+        },
+        {
+          "name": "Moderation log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/moderation/log?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "moderation", "log"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Audit trail of moderation decisions: { id, action, targetType, targetId, reason, note, createdAt, actor{id,username} }, newest first. Every hide/dismiss/restore/disable records an entry with the acting admin and the optional reason/note."
           },
           "response": []
         }

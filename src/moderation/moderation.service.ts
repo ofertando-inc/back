@@ -1,6 +1,13 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OfferStatus, Prisma, ReportStatus, UserStatus } from '@prisma/client';
+import {
+  ModerationAction,
+  ModerationTargetType,
+  OfferStatus,
+  Prisma,
+  ReportStatus,
+  UserStatus,
+} from '@prisma/client';
 
 import { RefreshTokensService } from '../auth/refresh-tokens.service';
 import { AppException } from '../common/exceptions/app.exception';
@@ -12,9 +19,12 @@ import { OffersService } from '../offers/offers.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PublicUser } from '../users/types/public-user.type';
+import { ListModerationLogQueryDto } from './dto/list-moderation-log-query.dto';
 import { ListReportedCommentsQueryDto } from './dto/list-reported-comments-query.dto';
 import { ListReportsQueryDto } from './dto/list-reports-query.dto';
+import { ModerationDecisionDto } from './dto/moderation-decision.dto';
 import type { CommentModerationSummary } from './types/comment-moderation-summary.type';
+import type { ModerationLogEntry } from './types/moderation-log-entry.type';
 import type {
   CommentReportDetail,
   OfferReportDetail,
@@ -72,6 +82,7 @@ export class ModerationService {
   async disableOffer(
     offerId: string,
     viewerId: string,
+    decision?: ModerationDecisionDto,
   ): Promise<OfferResponse> {
     const offer = await this.prisma.offer.findUnique({
       where: { id: offerId },
@@ -105,6 +116,13 @@ export class ModerationService {
         where: { offerId, status: ReportStatus.PENDING },
         data: { status: ReportStatus.RESOLVED, resolvedAt: new Date() },
       }),
+      this.logEntry(
+        viewerId,
+        ModerationAction.DISABLE_OFFER,
+        ModerationTargetType.OFFER,
+        offerId,
+        decision,
+      ),
     ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
@@ -113,6 +131,7 @@ export class ModerationService {
   async dismissOfferReports(
     offerId: string,
     viewerId: string,
+    decision?: ModerationDecisionDto,
   ): Promise<OfferResponse> {
     const offer = await this.prisma.offer.findUnique({
       where: { id: offerId },
@@ -143,6 +162,13 @@ export class ModerationService {
         data: { status: ReportStatus.DISMISSED, resolvedAt: new Date() },
       }),
       this.prisma.offer.update({ where: { id: offerId }, data }),
+      this.logEntry(
+        viewerId,
+        ModerationAction.DISMISS_OFFER,
+        ModerationTargetType.OFFER,
+        offerId,
+        decision,
+      ),
     ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
@@ -151,6 +177,7 @@ export class ModerationService {
   async restoreOffer(
     offerId: string,
     viewerId: string,
+    decision?: ModerationDecisionDto,
   ): Promise<OfferResponse> {
     const offer = await this.prisma.offer.findUnique({
       where: { id: offerId },
@@ -169,10 +196,19 @@ export class ModerationService {
       );
     }
 
-    await this.prisma.offer.update({
-      where: { id: offerId },
-      data: { status: OfferStatus.ACTIVE, disabledAt: null, reportCount: 0 },
-    });
+    await this.prisma.$transaction([
+      this.prisma.offer.update({
+        where: { id: offerId },
+        data: { status: OfferStatus.ACTIVE, disabledAt: null, reportCount: 0 },
+      }),
+      this.logEntry(
+        viewerId,
+        ModerationAction.RESTORE_OFFER,
+        ModerationTargetType.OFFER,
+        offerId,
+        decision,
+      ),
+    ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
   }
@@ -321,7 +357,54 @@ export class ModerationService {
     };
   }
 
-  async disableUser(userId: string): Promise<PublicUser> {
+  async listModerationLog(
+    query: ListModerationLogQueryDto,
+  ): Promise<PaginatedResult<ModerationLogEntry>> {
+    const limit = query.limit ?? 20;
+    const where: Prisma.ModerationLogWhereInput = {};
+    if (query.cursor) {
+      where.AND = [
+        this.buildReportCursorWhere(decodeCursor<ReportCursor>(query.cursor)),
+      ];
+    }
+
+    const items = await this.prisma.moderationLog.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      include: { actor: { select: { id: true, username: true } } },
+    });
+
+    const hasMore = items.length > limit;
+    const trimmed = hasMore ? items.slice(0, limit) : items;
+    const last = trimmed[trimmed.length - 1];
+
+    return {
+      items: trimmed.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        targetType: entry.targetType,
+        targetId: entry.targetId,
+        reason: entry.reason,
+        note: entry.note,
+        createdAt: entry.createdAt,
+        actor: entry.actor,
+      })),
+      nextCursor:
+        hasMore && last
+          ? encodeCursor<ReportCursor>({
+              createdAt: last.createdAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
+  }
+
+  async disableUser(
+    userId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<PublicUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: publicUserSelect,
@@ -338,18 +421,31 @@ export class ModerationService {
       );
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: { status: UserStatus.DISABLED },
-      select: publicUserSelect,
-    });
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { status: UserStatus.DISABLED },
+        select: publicUserSelect,
+      }),
+      this.logEntry(
+        actorId,
+        ModerationAction.DISABLE_USER,
+        ModerationTargetType.USER,
+        userId,
+        decision,
+      ),
+    ]);
 
     await this.refreshTokensService.revokeAllForUser(userId);
 
     return updated;
   }
 
-  async restoreUser(userId: string): Promise<PublicUser> {
+  async restoreUser(
+    userId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<PublicUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: publicUserSelect,
@@ -366,11 +462,22 @@ export class ModerationService {
       );
     }
 
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: { status: UserStatus.ACTIVE },
-      select: publicUserSelect,
-    });
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { status: UserStatus.ACTIVE },
+        select: publicUserSelect,
+      }),
+      this.logEntry(
+        actorId,
+        ModerationAction.RESTORE_USER,
+        ModerationTargetType.USER,
+        userId,
+        decision,
+      ),
+    ]);
+
+    return updated;
   }
 
   async listReportedComments(
@@ -425,7 +532,11 @@ export class ModerationService {
     };
   }
 
-  async hideComment(commentId: string): Promise<CommentModerationSummary> {
+  async hideComment(
+    commentId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<CommentModerationSummary> {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
     });
@@ -457,6 +568,13 @@ export class ModerationService {
         where: { id: comment.offerId },
         data: { commentCount: { decrement: 1 } },
       }),
+      this.logEntry(
+        actorId,
+        ModerationAction.HIDE_COMMENT,
+        ModerationTargetType.COMMENT,
+        commentId,
+        decision,
+      ),
     ];
 
     if (comment.parentId) {
@@ -473,7 +591,11 @@ export class ModerationService {
     return this.findCommentSummary(commentId);
   }
 
-  async dismissComment(commentId: string): Promise<CommentModerationSummary> {
+  async dismissComment(
+    commentId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<CommentModerationSummary> {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
     });
@@ -500,12 +622,23 @@ export class ModerationService {
         where: { id: commentId },
         data: { reportCount: 0 },
       }),
+      this.logEntry(
+        actorId,
+        ModerationAction.DISMISS_COMMENT,
+        ModerationTargetType.COMMENT,
+        commentId,
+        decision,
+      ),
     ]);
 
     return this.findCommentSummary(commentId);
   }
 
-  async restoreComment(commentId: string): Promise<CommentModerationSummary> {
+  async restoreComment(
+    commentId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<CommentModerationSummary> {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
     });
@@ -532,6 +665,13 @@ export class ModerationService {
         where: { id: comment.offerId },
         data: { commentCount: { increment: 1 } },
       }),
+      this.logEntry(
+        actorId,
+        ModerationAction.RESTORE_COMMENT,
+        ModerationTargetType.COMMENT,
+        commentId,
+        decision,
+      ),
     ];
 
     if (comment.parentId) {
@@ -546,6 +686,27 @@ export class ModerationService {
     await this.prisma.$transaction(ops);
 
     return this.findCommentSummary(commentId);
+  }
+
+  // Builds a moderation-log create to push into an action's transaction, so the
+  // decision (actor, reason, note) is recorded atomically with its effect.
+  private logEntry(
+    actorId: string,
+    action: ModerationAction,
+    targetType: ModerationTargetType,
+    targetId: string,
+    decision?: ModerationDecisionDto,
+  ): Prisma.PrismaPromise<unknown> {
+    return this.prisma.moderationLog.create({
+      data: {
+        actorId,
+        action,
+        targetType,
+        targetId,
+        reason: decision?.reason ?? null,
+        note: decision?.note ?? null,
+      },
+    });
   }
 
   private async findCommentSummary(

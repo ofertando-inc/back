@@ -140,6 +140,7 @@ describe('ModerationService', () => {
       findMany: jest.Mock;
       updateMany: jest.Mock;
     };
+    moderationLog: { findMany: jest.Mock; create: jest.Mock };
     $transaction: jest.Mock;
   };
   let offersService: jest.Mocked<Pick<OffersService, 'findAll' | 'findById'>>;
@@ -168,6 +169,7 @@ describe('ModerationService', () => {
         findMany: jest.fn(),
         updateMany: jest.fn(),
       },
+      moderationLog: { findMany: jest.fn(), create: jest.fn() },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     offersService = {
@@ -216,7 +218,9 @@ describe('ModerationService', () => {
       const enriched = buildOfferResponse({ status: OfferStatus.DISABLED });
       offersService.findById.mockResolvedValue(enriched);
 
-      const result = await service.disableOffer('offer-1', 'admin-1');
+      const result = await service.disableOffer('offer-1', 'admin-1', {
+        reason: 'scam',
+      });
 
       expect(prisma.offer.update).toHaveBeenCalledWith({
         where: { id: 'offer-1' },
@@ -232,6 +236,17 @@ describe('ModerationService', () => {
         data: {
           status: ReportStatus.RESOLVED,
           resolvedAt: expect.any(Date) as unknown as Date,
+        },
+      });
+      // the decision is recorded in the moderation log
+      expect(prisma.moderationLog.create).toHaveBeenCalledWith({
+        data: {
+          actorId: 'admin-1',
+          action: 'DISABLE_OFFER',
+          targetType: 'OFFER',
+          targetId: 'offer-1',
+          reason: 'scam',
+          note: null,
         },
       });
       expect(result).toBe(enriched);
@@ -497,18 +512,83 @@ describe('ModerationService', () => {
     });
   });
 
+  describe('listModerationLog', () => {
+    it('returns paginated moderation log entries with their actor', async () => {
+      prisma.moderationLog.findMany.mockResolvedValue([
+        {
+          id: 'log-1',
+          action: 'HIDE_COMMENT',
+          targetType: 'COMMENT',
+          targetId: 'comment-1',
+          reason: 'spam',
+          note: null,
+          createdAt: new Date('2024-06-02T00:00:00Z'),
+          actor: { id: 'admin-1', username: 'admin' },
+        },
+      ]);
+
+      const result = await service.listModerationLog({ limit: 5 });
+
+      expect(result.items[0]).toMatchObject({
+        id: 'log-1',
+        action: 'HIDE_COMMENT',
+        targetType: 'COMMENT',
+        targetId: 'comment-1',
+        reason: 'spam',
+        actor: { id: 'admin-1', username: 'admin' },
+      });
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('returns a nextCursor when more entries exist', async () => {
+      const entry = (id: string) => ({
+        id,
+        action: 'HIDE_COMMENT',
+        targetType: 'COMMENT',
+        targetId: 'c',
+        reason: null,
+        note: null,
+        createdAt: new Date('2024-06-02T00:00:00Z'),
+        actor: { id: 'admin-1', username: 'admin' },
+      });
+      prisma.moderationLog.findMany.mockResolvedValue([
+        entry('l1'),
+        entry('l2'),
+        entry('l3'),
+      ]);
+
+      const result = await service.listModerationLog({ limit: 2 });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.nextCursor).not.toBeNull();
+    });
+  });
+
   describe('disableUser', () => {
     it('transitions ACTIVE user to DISABLED and revokes all sessions', async () => {
       prisma.user.findUnique.mockResolvedValue(buildPublicUser());
       const updated = buildPublicUser({ status: UserStatus.DISABLED });
       prisma.user.update.mockResolvedValue(updated);
 
-      const result = await service.disableUser('user-1');
+      const result = await service.disableUser('user-1', 'admin-1', {
+        reason: 'repeated abuse',
+      });
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
         data: { status: UserStatus.DISABLED },
         select: expect.any(Object) as unknown as object,
+      });
+      // the decision is recorded in the moderation log
+      expect(prisma.moderationLog.create).toHaveBeenCalledWith({
+        data: {
+          actorId: 'admin-1',
+          action: 'DISABLE_USER',
+          targetType: 'USER',
+          targetId: 'user-1',
+          reason: 'repeated abuse',
+          note: null,
+        },
       });
       expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(
         'user-1',
@@ -519,7 +599,9 @@ describe('ModerationService', () => {
     it('throws user.not_found when the user does not exist', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.disableUser('missing')).rejects.toMatchObject({
+      await expect(
+        service.disableUser('missing', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.UserNotFound,
       });
       expect(refreshTokensService.revokeAllForUser).not.toHaveBeenCalled();
@@ -530,7 +612,9 @@ describe('ModerationService', () => {
         buildPublicUser({ status: UserStatus.DISABLED }),
       );
 
-      await expect(service.disableUser('user-1')).rejects.toMatchObject({
+      await expect(
+        service.disableUser('user-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.UserInvalidStatusTransition,
       });
       expect(prisma.user.update).not.toHaveBeenCalled();
@@ -546,7 +630,7 @@ describe('ModerationService', () => {
       const updated = buildPublicUser({ status: UserStatus.ACTIVE });
       prisma.user.update.mockResolvedValue(updated);
 
-      const result = await service.restoreUser('user-1');
+      const result = await service.restoreUser('user-1', 'admin-1');
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
@@ -559,7 +643,9 @@ describe('ModerationService', () => {
     it('throws user.not_found when the user does not exist', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.restoreUser('missing')).rejects.toMatchObject({
+      await expect(
+        service.restoreUser('missing', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.UserNotFound,
       });
     });
@@ -567,7 +653,9 @@ describe('ModerationService', () => {
     it('throws user.invalid_status_transition when the user is already ACTIVE', async () => {
       prisma.user.findUnique.mockResolvedValue(buildPublicUser());
 
-      await expect(service.restoreUser('user-1')).rejects.toMatchObject({
+      await expect(
+        service.restoreUser('user-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.UserInvalidStatusTransition,
       });
       expect(prisma.user.update).not.toHaveBeenCalled();
@@ -630,7 +718,10 @@ describe('ModerationService', () => {
           }),
         );
 
-      const result = await service.hideComment('comment-1');
+      const result = await service.hideComment('comment-1', 'admin-1', {
+        reason: 'spam',
+        note: 'obvious ad',
+      });
 
       expect(prisma.comment.update).toHaveBeenCalledWith({
         where: { id: 'comment-1' },
@@ -652,6 +743,17 @@ describe('ModerationService', () => {
         where: { id: 'offer-1' },
         data: { commentCount: { decrement: 1 } },
       });
+      // the decision is recorded in the moderation log
+      expect(prisma.moderationLog.create).toHaveBeenCalledWith({
+        data: {
+          actorId: 'admin-1',
+          action: 'HIDE_COMMENT',
+          targetType: 'COMMENT',
+          targetId: 'comment-1',
+          reason: 'spam',
+          note: 'obvious ad',
+        },
+      });
       expect(result.id).toBe('comment-1');
       expect(result.hiddenAt).not.toBeNull();
     });
@@ -669,7 +771,7 @@ describe('ModerationService', () => {
           }),
         );
 
-      await service.hideComment('reply-1');
+      await service.hideComment('reply-1', 'admin-1');
 
       expect(prisma.comment.update).toHaveBeenCalledWith({
         where: { id: 'root-1' },
@@ -682,7 +784,9 @@ describe('ModerationService', () => {
         buildModerationComment({ deletedAt: new Date() }),
       );
 
-      await expect(service.hideComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.hideComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentNotFound,
       });
       expect(prisma.comment.update).not.toHaveBeenCalled();
@@ -693,7 +797,9 @@ describe('ModerationService', () => {
         buildModerationComment({ hiddenAt: new Date() }),
       );
 
-      await expect(service.hideComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.hideComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentInvalidStatusTransition,
       });
       expect(prisma.comment.update).not.toHaveBeenCalled();
@@ -710,7 +816,7 @@ describe('ModerationService', () => {
           buildModerationComment({ hiddenAt: null, reportCount: 0 }),
         );
 
-      await service.dismissComment('comment-1');
+      await service.dismissComment('comment-1', 'admin-1');
 
       expect(prisma.commentReport.updateMany).toHaveBeenCalledWith({
         where: { commentId: 'comment-1', status: ReportStatus.PENDING },
@@ -732,7 +838,9 @@ describe('ModerationService', () => {
         buildModerationComment({ deletedAt: new Date() }),
       );
 
-      await expect(service.dismissComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.dismissComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentNotFound,
       });
     });
@@ -742,7 +850,9 @@ describe('ModerationService', () => {
         buildModerationComment({ hiddenAt: new Date(), reportCount: 0 }),
       );
 
-      await expect(service.dismissComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.dismissComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentInvalidStatusTransition,
       });
       expect(prisma.commentReport.updateMany).not.toHaveBeenCalled();
@@ -759,7 +869,7 @@ describe('ModerationService', () => {
           buildModerationComment({ hiddenAt: null, reportCount: 0 }),
         );
 
-      const result = await service.restoreComment('comment-1');
+      const result = await service.restoreComment('comment-1', 'admin-1');
 
       expect(prisma.comment.update).toHaveBeenCalledWith({
         where: { id: 'comment-1' },
@@ -787,7 +897,7 @@ describe('ModerationService', () => {
           buildModerationComment({ id: 'reply-1', parentId: 'root-1' }),
         );
 
-      await service.restoreComment('reply-1');
+      await service.restoreComment('reply-1', 'admin-1');
 
       expect(prisma.comment.update).toHaveBeenCalledWith({
         where: { id: 'root-1' },
@@ -798,7 +908,9 @@ describe('ModerationService', () => {
     it('throws comment.not_found when the comment is missing or author-deleted', async () => {
       prisma.comment.findUnique.mockResolvedValue(null);
 
-      await expect(service.restoreComment('missing')).rejects.toMatchObject({
+      await expect(
+        service.restoreComment('missing', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentNotFound,
       });
     });
@@ -808,7 +920,9 @@ describe('ModerationService', () => {
         buildModerationComment({ hiddenAt: null, reportCount: 0 }),
       );
 
-      await expect(service.restoreComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.restoreComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentInvalidStatusTransition,
       });
       expect(prisma.comment.update).not.toHaveBeenCalled();

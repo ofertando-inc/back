@@ -101,6 +101,22 @@ type ReportDetailListBody = {
   nextCursor: string | null;
 };
 
+type ModerationLogEntryBody = {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  reason: string | null;
+  note: string | null;
+  createdAt: string;
+  actor: { id: string; username: string };
+};
+
+type ModerationLogListBody = {
+  items: ModerationLogEntryBody[];
+  nextCursor: string | null;
+};
+
 function extractCookie(name: string, setCookieHeader: unknown): string {
   const cookies = Array.isArray(setCookieHeader)
     ? (setCookieHeader as string[])
@@ -826,6 +842,50 @@ describe('Moderation flow (e2e)', () => {
         .set('Authorization', `Bearer ${admin.accessToken}`);
       expect(res.status).toBe(404);
       expect((res.body as ErrorBody).key).toBe('comment.not_found');
+    });
+  });
+
+  describe('Moderation log', () => {
+    it('rejects /admin/moderation/log as a regular USER with 403', async () => {
+      const user = await registerUser('user@example.com', 'user');
+      const res = await request(app.getHttpServer())
+        .get('/admin/moderation/log')
+        .set('Authorization', `Bearer ${user.accessToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('records a moderation decision with its actor, action and reason', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments`)
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .send({ content: 'bad comment' });
+      const commentId = (created.body as { id: string }).id;
+
+      await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ reason: 'spam', note: 'obvious ad' })
+        .expect(200);
+
+      const log = await request(app.getHttpServer())
+        .get('/admin/moderation/log')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(log.status).toBe(200);
+
+      const entry = (log.body as ModerationLogListBody).items.find(
+        (e) => e.targetId === commentId,
+      );
+      expect(entry).toMatchObject({
+        action: 'HIDE_COMMENT',
+        targetType: 'COMMENT',
+        targetId: commentId,
+        reason: 'spam',
+        note: 'obvious ad',
+        actor: { username: 'admin' },
+      });
     });
   });
 });

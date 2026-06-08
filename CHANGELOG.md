@@ -19,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a report lifecycle: a `ReportStatus` enum (`PENDING`/`RESOLVED`/`DISMISSED`) with `status` and `resolvedAt` columns on `Report` and `CommentReport`, plus the migration. Moderation queues (`GET /admin/comments`, `GET /admin/reports`) now list only `PENDING` items, so they no longer grow indefinitely
 - Tied moderation decisions to report status (resolution is per target, not per individual report): hiding a comment / disabling an offer marks its pending reports `RESOLVED`; new `PATCH /admin/comments/:id/dismiss` and `PATCH /admin/offers/:id/dismiss` mark them `DISMISSED` while keeping the content visible (a `REPORTED` offer returns to `ACTIVE`); `restore` is narrowed to un-hiding a hidden comment / re-activating a `DISABLED` offer and no longer deletes reports — history is kept via `status`
 - Reports are re-openable: when a user reports a target again after their previous report was `RESOLVED`/`DISMISSED`, that report is re-opened to `PENDING` (count climbs again, threshold can re-trigger), while a still-pending report stays idempotent
-- Updated the Postman collection with the report detail endpoints and the `dismiss` actions (comments and offers)
+- Added a moderation audit log: a `ModerationLog` model (`actor`, `action`, `targetType`, `targetId`, `reason`, `note`, `createdAt`) with `ModerationAction` / `ModerationTargetType` enums and the migration, read via `GET /admin/moderation/log` (cursor-paginated, newest first, with the acting admin), guarded by `JwtAuthGuard + AdminGuard`
+- Every moderation decision now accepts an optional `{ reason?, note? }` body (`ModerationDecisionDto`) and records a `ModerationLog` entry atomically within its transaction: comment `hide`/`dismiss`/`restore`, offer `disable`/`dismiss`/`restore`, and user `disable`/`restore`
+- Updated the Postman collection with the report detail endpoints, the `dismiss` actions (comments and offers), the `Moderation log` request, and the optional `reason`/`note` body on moderation actions
 
 ### Security
 
