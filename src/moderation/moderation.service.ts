@@ -12,9 +12,11 @@ import { OffersService } from '../offers/offers.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PublicUser } from '../users/types/public-user.type';
+import { ListModerationLogQueryDto } from './dto/list-moderation-log-query.dto';
 import { ListReportedCommentsQueryDto } from './dto/list-reported-comments-query.dto';
 import { ListReportsQueryDto } from './dto/list-reports-query.dto';
 import type { CommentModerationSummary } from './types/comment-moderation-summary.type';
+import type { ModerationLogEntry } from './types/moderation-log-entry.type';
 import type {
   CommentReportDetail,
   OfferReportDetail,
@@ -310,6 +312,49 @@ export class ModerationService {
         status: report.status,
         createdAt: report.createdAt,
         user: report.user,
+      })),
+      nextCursor:
+        hasMore && last
+          ? encodeCursor<ReportCursor>({
+              createdAt: last.createdAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
+  }
+
+  async listModerationLog(
+    query: ListModerationLogQueryDto,
+  ): Promise<PaginatedResult<ModerationLogEntry>> {
+    const limit = query.limit ?? 20;
+    const where: Prisma.ModerationLogWhereInput = {};
+    if (query.cursor) {
+      where.AND = [
+        this.buildReportCursorWhere(decodeCursor<ReportCursor>(query.cursor)),
+      ];
+    }
+
+    const items = await this.prisma.moderationLog.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      include: { actor: { select: { id: true, username: true } } },
+    });
+
+    const hasMore = items.length > limit;
+    const trimmed = hasMore ? items.slice(0, limit) : items;
+    const last = trimmed[trimmed.length - 1];
+
+    return {
+      items: trimmed.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        targetType: entry.targetType,
+        targetId: entry.targetId,
+        reason: entry.reason,
+        note: entry.note,
+        createdAt: entry.createdAt,
+        actor: entry.actor,
       })),
       nextCursor:
         hasMore && last

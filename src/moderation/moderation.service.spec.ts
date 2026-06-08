@@ -140,6 +140,7 @@ describe('ModerationService', () => {
       findMany: jest.Mock;
       updateMany: jest.Mock;
     };
+    moderationLog: { findMany: jest.Mock };
     $transaction: jest.Mock;
   };
   let offersService: jest.Mocked<Pick<OffersService, 'findAll' | 'findById'>>;
@@ -168,6 +169,7 @@ describe('ModerationService', () => {
         findMany: jest.fn(),
         updateMany: jest.fn(),
       },
+      moderationLog: { findMany: jest.fn() },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     offersService = {
@@ -494,6 +496,58 @@ describe('ModerationService', () => {
       await expect(
         service.listOfferReports('missing', {}),
       ).rejects.toMatchObject({ key: ErrorKey.OfferNotFound });
+    });
+  });
+
+  describe('listModerationLog', () => {
+    it('returns paginated moderation log entries with their actor', async () => {
+      prisma.moderationLog.findMany.mockResolvedValue([
+        {
+          id: 'log-1',
+          action: 'HIDE_COMMENT',
+          targetType: 'COMMENT',
+          targetId: 'comment-1',
+          reason: 'spam',
+          note: null,
+          createdAt: new Date('2024-06-02T00:00:00Z'),
+          actor: { id: 'admin-1', username: 'admin' },
+        },
+      ]);
+
+      const result = await service.listModerationLog({ limit: 5 });
+
+      expect(result.items[0]).toMatchObject({
+        id: 'log-1',
+        action: 'HIDE_COMMENT',
+        targetType: 'COMMENT',
+        targetId: 'comment-1',
+        reason: 'spam',
+        actor: { id: 'admin-1', username: 'admin' },
+      });
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('returns a nextCursor when more entries exist', async () => {
+      const entry = (id: string) => ({
+        id,
+        action: 'HIDE_COMMENT',
+        targetType: 'COMMENT',
+        targetId: 'c',
+        reason: null,
+        note: null,
+        createdAt: new Date('2024-06-02T00:00:00Z'),
+        actor: { id: 'admin-1', username: 'admin' },
+      });
+      prisma.moderationLog.findMany.mockResolvedValue([
+        entry('l1'),
+        entry('l2'),
+        entry('l3'),
+      ]);
+
+      const result = await service.listModerationLog({ limit: 2 });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.nextCursor).not.toBeNull();
     });
   });
 
