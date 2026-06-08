@@ -570,12 +570,25 @@ describe('ModerationService', () => {
       const updated = buildPublicUser({ status: UserStatus.DISABLED });
       prisma.user.update.mockResolvedValue(updated);
 
-      const result = await service.disableUser('user-1');
+      const result = await service.disableUser('user-1', 'admin-1', {
+        reason: 'repeated abuse',
+      });
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
         data: { status: UserStatus.DISABLED },
         select: expect.any(Object) as unknown as object,
+      });
+      // the decision is recorded in the moderation log
+      expect(prisma.moderationLog.create).toHaveBeenCalledWith({
+        data: {
+          actorId: 'admin-1',
+          action: 'DISABLE_USER',
+          targetType: 'USER',
+          targetId: 'user-1',
+          reason: 'repeated abuse',
+          note: null,
+        },
       });
       expect(refreshTokensService.revokeAllForUser).toHaveBeenCalledWith(
         'user-1',
@@ -586,7 +599,9 @@ describe('ModerationService', () => {
     it('throws user.not_found when the user does not exist', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.disableUser('missing')).rejects.toMatchObject({
+      await expect(
+        service.disableUser('missing', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.UserNotFound,
       });
       expect(refreshTokensService.revokeAllForUser).not.toHaveBeenCalled();
@@ -597,7 +612,9 @@ describe('ModerationService', () => {
         buildPublicUser({ status: UserStatus.DISABLED }),
       );
 
-      await expect(service.disableUser('user-1')).rejects.toMatchObject({
+      await expect(
+        service.disableUser('user-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.UserInvalidStatusTransition,
       });
       expect(prisma.user.update).not.toHaveBeenCalled();
@@ -613,7 +630,7 @@ describe('ModerationService', () => {
       const updated = buildPublicUser({ status: UserStatus.ACTIVE });
       prisma.user.update.mockResolvedValue(updated);
 
-      const result = await service.restoreUser('user-1');
+      const result = await service.restoreUser('user-1', 'admin-1');
 
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: 'user-1' },
@@ -626,7 +643,9 @@ describe('ModerationService', () => {
     it('throws user.not_found when the user does not exist', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
-      await expect(service.restoreUser('missing')).rejects.toMatchObject({
+      await expect(
+        service.restoreUser('missing', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.UserNotFound,
       });
     });
@@ -634,7 +653,9 @@ describe('ModerationService', () => {
     it('throws user.invalid_status_transition when the user is already ACTIVE', async () => {
       prisma.user.findUnique.mockResolvedValue(buildPublicUser());
 
-      await expect(service.restoreUser('user-1')).rejects.toMatchObject({
+      await expect(
+        service.restoreUser('user-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.UserInvalidStatusTransition,
       });
       expect(prisma.user.update).not.toHaveBeenCalled();

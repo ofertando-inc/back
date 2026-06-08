@@ -400,7 +400,11 @@ export class ModerationService {
     };
   }
 
-  async disableUser(userId: string): Promise<PublicUser> {
+  async disableUser(
+    userId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<PublicUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: publicUserSelect,
@@ -417,18 +421,31 @@ export class ModerationService {
       );
     }
 
-    const updated = await this.prisma.user.update({
-      where: { id: userId },
-      data: { status: UserStatus.DISABLED },
-      select: publicUserSelect,
-    });
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { status: UserStatus.DISABLED },
+        select: publicUserSelect,
+      }),
+      this.logEntry(
+        actorId,
+        ModerationAction.DISABLE_USER,
+        ModerationTargetType.USER,
+        userId,
+        decision,
+      ),
+    ]);
 
     await this.refreshTokensService.revokeAllForUser(userId);
 
     return updated;
   }
 
-  async restoreUser(userId: string): Promise<PublicUser> {
+  async restoreUser(
+    userId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<PublicUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: publicUserSelect,
@@ -445,11 +462,22 @@ export class ModerationService {
       );
     }
 
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: { status: UserStatus.ACTIVE },
-      select: publicUserSelect,
-    });
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { status: UserStatus.ACTIVE },
+        select: publicUserSelect,
+      }),
+      this.logEntry(
+        actorId,
+        ModerationAction.RESTORE_USER,
+        ModerationTargetType.USER,
+        userId,
+        decision,
+      ),
+    ]);
+
+    return updated;
   }
 
   async listReportedComments(
