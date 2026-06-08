@@ -133,8 +133,14 @@ describe('ModerationService', () => {
       findMany: jest.Mock;
       deleteMany: jest.Mock;
       updateMany: jest.Mock;
+      count: jest.Mock;
     };
-    comment: { findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock };
+    comment: {
+      findUnique: jest.Mock;
+      update: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
+    };
     commentReport: {
       deleteMany: jest.Mock;
       findMany: jest.Mock;
@@ -158,11 +164,13 @@ describe('ModerationService', () => {
         findMany: jest.fn(),
         deleteMany: jest.fn(),
         updateMany: jest.fn(),
+        count: jest.fn(),
       },
       comment: {
         findUnique: jest.fn(),
         update: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
       },
       commentReport: {
         deleteMany: jest.fn(),
@@ -509,6 +517,29 @@ describe('ModerationService', () => {
       await expect(
         service.listOfferReports('missing', {}),
       ).rejects.toMatchObject({ key: ErrorKey.OfferNotFound });
+    });
+  });
+
+  describe('getModerationSummary', () => {
+    it('counts the pending comment queue and pending offer reports', async () => {
+      prisma.comment.count.mockResolvedValue(4);
+      prisma.report.count.mockResolvedValue(7);
+
+      const result = await service.getModerationSummary();
+
+      // comment queue: above threshold, live and not hidden
+      expect(prisma.comment.count).toHaveBeenCalledWith({
+        where: {
+          reportCount: { gte: 3 },
+          hiddenAt: null,
+          deletedAt: null,
+        },
+      });
+      // offer reports: only PENDING ones
+      expect(prisma.report.count).toHaveBeenCalledWith({
+        where: { status: ReportStatus.PENDING },
+      });
+      expect(result).toEqual({ pendingComments: 4, pendingOfferReports: 7 });
     });
   });
 
