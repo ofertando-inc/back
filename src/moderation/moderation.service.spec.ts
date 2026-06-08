@@ -218,7 +218,9 @@ describe('ModerationService', () => {
       const enriched = buildOfferResponse({ status: OfferStatus.DISABLED });
       offersService.findById.mockResolvedValue(enriched);
 
-      const result = await service.disableOffer('offer-1', 'admin-1');
+      const result = await service.disableOffer('offer-1', 'admin-1', {
+        reason: 'scam',
+      });
 
       expect(prisma.offer.update).toHaveBeenCalledWith({
         where: { id: 'offer-1' },
@@ -234,6 +236,17 @@ describe('ModerationService', () => {
         data: {
           status: ReportStatus.RESOLVED,
           resolvedAt: expect.any(Date) as unknown as Date,
+        },
+      });
+      // the decision is recorded in the moderation log
+      expect(prisma.moderationLog.create).toHaveBeenCalledWith({
+        data: {
+          actorId: 'admin-1',
+          action: 'DISABLE_OFFER',
+          targetType: 'OFFER',
+          targetId: 'offer-1',
+          reason: 'scam',
+          note: null,
         },
       });
       expect(result).toBe(enriched);

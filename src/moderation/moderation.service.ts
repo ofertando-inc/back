@@ -82,6 +82,7 @@ export class ModerationService {
   async disableOffer(
     offerId: string,
     viewerId: string,
+    decision?: ModerationDecisionDto,
   ): Promise<OfferResponse> {
     const offer = await this.prisma.offer.findUnique({
       where: { id: offerId },
@@ -115,6 +116,13 @@ export class ModerationService {
         where: { offerId, status: ReportStatus.PENDING },
         data: { status: ReportStatus.RESOLVED, resolvedAt: new Date() },
       }),
+      this.logEntry(
+        viewerId,
+        ModerationAction.DISABLE_OFFER,
+        ModerationTargetType.OFFER,
+        offerId,
+        decision,
+      ),
     ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
@@ -123,6 +131,7 @@ export class ModerationService {
   async dismissOfferReports(
     offerId: string,
     viewerId: string,
+    decision?: ModerationDecisionDto,
   ): Promise<OfferResponse> {
     const offer = await this.prisma.offer.findUnique({
       where: { id: offerId },
@@ -153,6 +162,13 @@ export class ModerationService {
         data: { status: ReportStatus.DISMISSED, resolvedAt: new Date() },
       }),
       this.prisma.offer.update({ where: { id: offerId }, data }),
+      this.logEntry(
+        viewerId,
+        ModerationAction.DISMISS_OFFER,
+        ModerationTargetType.OFFER,
+        offerId,
+        decision,
+      ),
     ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
@@ -161,6 +177,7 @@ export class ModerationService {
   async restoreOffer(
     offerId: string,
     viewerId: string,
+    decision?: ModerationDecisionDto,
   ): Promise<OfferResponse> {
     const offer = await this.prisma.offer.findUnique({
       where: { id: offerId },
@@ -179,10 +196,19 @@ export class ModerationService {
       );
     }
 
-    await this.prisma.offer.update({
-      where: { id: offerId },
-      data: { status: OfferStatus.ACTIVE, disabledAt: null, reportCount: 0 },
-    });
+    await this.prisma.$transaction([
+      this.prisma.offer.update({
+        where: { id: offerId },
+        data: { status: OfferStatus.ACTIVE, disabledAt: null, reportCount: 0 },
+      }),
+      this.logEntry(
+        viewerId,
+        ModerationAction.RESTORE_OFFER,
+        ModerationTargetType.OFFER,
+        offerId,
+        decision,
+      ),
+    ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
   }
