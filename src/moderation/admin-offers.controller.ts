@@ -53,6 +53,14 @@ export class AdminOffersController {
     return this.moderationService.disableOffer(id, admin.id);
   }
 
+  @Patch(':id/dismiss')
+  dismiss(
+    @Param('id') id: string,
+    @CurrentUser() admin: PublicUser,
+  ): Promise<OfferResponse> {
+    return this.moderationService.dismissOfferReports(id, admin.id);
+  }
+
   @Patch(':id/restore')
   restore(
     @Param('id') id: string,

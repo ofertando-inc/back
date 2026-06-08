@@ -45,6 +45,12 @@ enum CommentReportReason {
   OTHER
 }
 
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
@@ -131,10 +137,12 @@ model Vote {
 }
 
 model Report {
-  id        String       @id @default(uuid())
-  reason    ReportReason
-  comment   String?
-  createdAt DateTime     @default(now())
+  id         String       @id @default(uuid())
+  reason     ReportReason
+  comment    String?
+  status     ReportStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
+  resolvedAt DateTime?
 
   userId  String
   offerId String
@@ -177,10 +185,12 @@ model Comment {
 }
 
 model CommentReport {
-  id        String              @id @default(uuid())
-  reason    CommentReportReason
-  note      String?
-  createdAt DateTime            @default(now())
+  id         String              @id @default(uuid())
+  reason     CommentReportReason
+  note       String?
+  status     ReportStatus        @default(PENDING)
+  createdAt  DateTime            @default(now())
+  resolvedAt DateTime?
 
   userId    String
   commentId String

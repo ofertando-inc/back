@@ -1,5 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Comment, CommentReport, CommentReportReason } from '@prisma/client';
+import {
+  Comment,
+  CommentReport,
+  CommentReportReason,
+  ReportStatus,
+} from '@prisma/client';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { PrismaService } from '../prisma/prisma.service';
@@ -30,7 +35,9 @@ function buildReport(overrides: Partial<CommentReport> = {}): CommentReport {
     id: 'report-1',
     reason: CommentReportReason.SPAM,
     note: null,
+    status: ReportStatus.PENDING,
     createdAt: new Date(),
+    resolvedAt: null,
     userId: 'user-1',
     commentId: 'comment-1',
     ...overrides,
@@ -45,6 +52,7 @@ type PrismaCommentMock = {
 type PrismaCommentReportMock = {
   findUnique: jest.Mock;
   create: jest.Mock;
+  update: jest.Mock;
 };
 
 describe('CommentReportsService', () => {
@@ -59,7 +67,11 @@ describe('CommentReportsService', () => {
 
   beforeEach(async () => {
     comment = { findUnique: jest.fn(), update: jest.fn() };
-    commentReport = { findUnique: jest.fn(), create: jest.fn() };
+    commentReport = {
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    };
     prisma = {
       comment,
       commentReport,
@@ -102,17 +114,45 @@ describe('CommentReportsService', () => {
       expect(result).toEqual({ reportCount: 3 });
     });
 
-    it('is idempotent when the user already reported the comment', async () => {
+    it('is idempotent when the user already has a pending report on the comment', async () => {
       comment.findUnique.mockResolvedValue(buildComment({ reportCount: 4 }));
-      commentReport.findUnique.mockResolvedValue(buildReport());
+      commentReport.findUnique.mockResolvedValue(
+        buildReport({ status: ReportStatus.PENDING }),
+      );
 
       const result = await service.create('user-1', 'offer-1', 'comment-1', {
         reason: CommentReportReason.ABUSE,
       });
 
       expect(commentReport.create).not.toHaveBeenCalled();
+      expect(commentReport.update).not.toHaveBeenCalled();
       expect(comment.update).not.toHaveBeenCalled();
       expect(result).toEqual({ reportCount: 4 });
+    });
+
+    it('re-opens a dismissed report from the same user and re-counts', async () => {
+      comment.findUnique.mockResolvedValue(buildComment({ reportCount: 0 }));
+      commentReport.findUnique.mockResolvedValue(
+        buildReport({ status: ReportStatus.DISMISSED }),
+      );
+      comment.update.mockResolvedValue(buildComment({ reportCount: 1 }));
+
+      const result = await service.create('user-1', 'offer-1', 'comment-1', {
+        reason: CommentReportReason.ABUSE,
+        note: 're-reporting',
+      });
+
+      expect(commentReport.update).toHaveBeenCalledWith({
+        where: { id: 'report-1' },
+        data: {
+          status: ReportStatus.PENDING,
+          resolvedAt: null,
+          reason: CommentReportReason.ABUSE,
+          note: 're-reporting',
+        },
+      });
+      expect(commentReport.create).not.toHaveBeenCalled();
+      expect(result).toEqual({ reportCount: 1 });
     });
 
     it('throws comment.not_found when the comment does not exist', async () => {

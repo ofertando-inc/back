@@ -41,6 +41,11 @@ export class AdminCommentsController {
     return this.moderationService.hideComment(id);
   }
 
+  @Patch(':id/dismiss')
+  dismiss(@Param('id') id: string): Promise<CommentModerationSummary> {
+    return this.moderationService.dismissComment(id);
+  }
+
   @Patch(':id/restore')
   restore(@Param('id') id: string): Promise<CommentModerationSummary> {
     return this.moderationService.restoreComment(id);
