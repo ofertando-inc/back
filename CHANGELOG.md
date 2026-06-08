@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every moderation decision now accepts an optional `{ reason?, note? }` body (`ModerationDecisionDto`) and records a `ModerationLog` entry atomically within its transaction: comment `hide`/`dismiss`/`restore`, offer `disable`/`dismiss`/`restore`, and user `disable`/`restore`
 - Updated the Postman collection with the report detail endpoints, the `dismiss` actions (comments and offers), the `Moderation log` request, and the optional `reason`/`note` body on moderation actions
 - Added `GET /admin/moderation/summary` returning dashboard counters `{ pendingComments, pendingOfferReports }` (sizes of the comment moderation queue and the pending offer reports) for nav badges, guarded by `JwtAuthGuard + AdminGuard`; added the matching Postman request
+- Added admin user management: `GET /admin/users?search=&cursor=` (search by username/email, cursor-paginated) and `GET /admin/users/:id` (the user plus content `counts` { offers, comments } and the recent `moderationHistory` from the log), guarded by `JwtAuthGuard + AdminGuard`; added the matching Postman requests
 
 ### Security
 

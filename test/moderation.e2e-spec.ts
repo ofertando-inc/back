@@ -122,6 +122,28 @@ type ModerationSummaryBody = {
   pendingOfferReports: number;
 };
 
+type AdminUserBody = {
+  id: string;
+  email: string;
+  username: string;
+  role: string;
+  status: string;
+};
+
+type AdminUserListBody = {
+  items: AdminUserBody[];
+  nextCursor: string | null;
+};
+
+type AdminUserDetailBody = AdminUserBody & {
+  counts: { offers: number; comments: number };
+  moderationHistory: {
+    action: string;
+    reason: string | null;
+    actor: { username: string };
+  }[];
+};
+
 function extractCookie(name: string, setCookieHeader: unknown): string {
   const cookies = Array.isArray(setCookieHeader)
     ? (setCookieHeader as string[])
@@ -942,6 +964,73 @@ describe('Moderation flow (e2e)', () => {
         pendingComments: 1,
         pendingOfferReports: 3,
       });
+    });
+  });
+
+  describe('Admin users', () => {
+    it('rejects /admin/users as a regular USER with 403', async () => {
+      const user = await registerUser('user@example.com', 'user');
+      const res = await request(app.getHttpServer())
+        .get('/admin/users')
+        .set('Authorization', `Bearer ${user.accessToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('searches users by username', async () => {
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      await registerUser('alice@example.com', 'alice');
+      await registerUser('bob@example.com', 'bob');
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/users?search=alic')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      const items = (res.body as AdminUserListBody).items;
+      expect(items).toHaveLength(1);
+      expect(items[0].username).toBe('alice');
+    });
+
+    it('returns a user detail with content counts and moderation history', async () => {
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const target = await registerUser('target@example.com', 'target');
+      const offer = await createOfferAs(target.accessToken);
+      await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments`)
+        .set('Authorization', `Bearer ${target.accessToken}`)
+        .send({ content: 'a comment' });
+
+      // a sanction is recorded in the moderation log
+      await request(app.getHttpServer())
+        .patch(`/admin/users/${target.user.id}/disable`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ reason: 'repeated abuse' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .get(`/admin/users/${target.user.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      const body = res.body as AdminUserDetailBody;
+      expect(body).toMatchObject({
+        id: target.user.id,
+        username: 'target',
+        status: 'DISABLED',
+        counts: { offers: 1, comments: 1 },
+      });
+      expect(body.moderationHistory[0]).toMatchObject({
+        action: 'DISABLE_USER',
+        reason: 'repeated abuse',
+        actor: { username: 'admin' },
+      });
+    });
+
+    it('returns 404 user.not_found for an unknown user', async () => {
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const res = await request(app.getHttpServer())
+        .get('/admin/users/00000000-0000-0000-0000-000000000000')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(404);
+      expect((res.body as ErrorBody).key).toBe('user.not_found');
     });
   });
 });
