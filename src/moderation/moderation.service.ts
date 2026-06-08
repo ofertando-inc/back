@@ -91,10 +91,59 @@ export class ModerationService {
       );
     }
 
-    await this.prisma.offer.update({
+    // Disabling takes a moderation decision: the pending reports are resolved.
+    await this.prisma.$transaction([
+      this.prisma.offer.update({
+        where: { id: offerId },
+        data: {
+          status: OfferStatus.DISABLED,
+          disabledAt: new Date(),
+          reportCount: 0,
+        },
+      }),
+      this.prisma.report.updateMany({
+        where: { offerId, status: ReportStatus.PENDING },
+        data: { status: ReportStatus.RESOLVED, resolvedAt: new Date() },
+      }),
+    ]);
+
+    return this.findEnrichedOffer(offerId, viewerId);
+  }
+
+  async dismissOfferReports(
+    offerId: string,
+    viewerId: string,
+  ): Promise<OfferResponse> {
+    const offer = await this.prisma.offer.findUnique({
       where: { id: offerId },
-      data: { status: OfferStatus.DISABLED, disabledAt: new Date() },
     });
+
+    if (!offer || offer.status === OfferStatus.DELETED) {
+      throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
+    }
+
+    // Dismiss = the reports are unfounded: clear them and keep the offer.
+    if (offer.reportCount === 0) {
+      throw new AppException(
+        ErrorKey.OfferInvalidStatusTransition,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // A REPORTED offer goes back to ACTIVE; other statuses (e.g. EXPIRED) keep
+    // their state, we only clear the reports.
+    const data: Prisma.OfferUpdateInput = { reportCount: 0 };
+    if (offer.status === OfferStatus.REPORTED) {
+      data.status = OfferStatus.ACTIVE;
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.report.updateMany({
+        where: { offerId, status: ReportStatus.PENDING },
+        data: { status: ReportStatus.DISMISSED, resolvedAt: new Date() },
+      }),
+      this.prisma.offer.update({ where: { id: offerId }, data }),
+    ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
   }
@@ -111,27 +160,19 @@ export class ModerationService {
       throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
     }
 
-    if (
-      offer.status !== OfferStatus.DISABLED &&
-      offer.status !== OfferStatus.REPORTED
-    ) {
+    // Restore only re-activates a disabled offer (its reports stay RESOLVED).
+    // Use dismiss to clear the reports of a still-public REPORTED offer.
+    if (offer.status !== OfferStatus.DISABLED) {
       throw new AppException(
         ErrorKey.OfferInvalidStatusTransition,
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    await this.prisma.$transaction([
-      this.prisma.report.deleteMany({ where: { offerId } }),
-      this.prisma.offer.update({
-        where: { id: offerId },
-        data: {
-          status: OfferStatus.ACTIVE,
-          disabledAt: null,
-          reportCount: 0,
-        },
-      }),
-    ]);
+    await this.prisma.offer.update({
+      where: { id: offerId },
+      data: { status: OfferStatus.ACTIVE, disabledAt: null, reportCount: 0 },
+    });
 
     return this.findEnrichedOffer(offerId, viewerId);
   }
@@ -140,9 +181,13 @@ export class ModerationService {
     query: ListReportsQueryDto,
   ): Promise<PaginatedResult<ReportSummary>> {
     const limit = query.limit ?? 20;
-    const where = query.cursor
-      ? this.buildReportCursorWhere(decodeCursor<ReportCursor>(query.cursor))
-      : {};
+    // Moderation queue: only reports still awaiting a decision.
+    const where: Prisma.ReportWhereInput = { status: ReportStatus.PENDING };
+    if (query.cursor) {
+      where.AND = [
+        this.buildReportCursorWhere(decodeCursor<ReportCursor>(query.cursor)),
+      ];
+    }
 
     const items = await this.prisma.report.findMany({
       where,

@@ -129,7 +129,11 @@ describe('ModerationService', () => {
   let prisma: {
     offer: { findUnique: jest.Mock; update: jest.Mock };
     user: { findUnique: jest.Mock; update: jest.Mock };
-    report: { findMany: jest.Mock; deleteMany: jest.Mock };
+    report: {
+      findMany: jest.Mock;
+      deleteMany: jest.Mock;
+      updateMany: jest.Mock;
+    };
     comment: { findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock };
     commentReport: {
       deleteMany: jest.Mock;
@@ -149,7 +153,11 @@ describe('ModerationService', () => {
     prisma = {
       offer: { findUnique: jest.fn(), update: jest.fn() },
       user: { findUnique: jest.fn(), update: jest.fn() },
-      report: { findMany: jest.fn(), deleteMany: jest.fn() },
+      report: {
+        findMany: jest.fn(),
+        deleteMany: jest.fn(),
+        updateMany: jest.fn(),
+      },
       comment: {
         findUnique: jest.fn(),
         update: jest.fn(),
@@ -215,6 +223,15 @@ describe('ModerationService', () => {
         data: {
           status: OfferStatus.DISABLED,
           disabledAt: expect.any(Date) as unknown as Date,
+          reportCount: 0,
+        },
+      });
+      // pending reports are resolved
+      expect(prisma.report.updateMany).toHaveBeenCalledWith({
+        where: { offerId: 'offer-1', status: ReportStatus.PENDING },
+        data: {
+          status: ReportStatus.RESOLVED,
+          resolvedAt: expect.any(Date) as unknown as Date,
         },
       });
       expect(result).toBe(enriched);
@@ -255,40 +272,82 @@ describe('ModerationService', () => {
     );
   });
 
-  describe('restoreOffer', () => {
-    it('transitions DISABLED offer back to ACTIVE, resets reportCount, and purges its reports', async () => {
+  describe('dismissOfferReports', () => {
+    it('dismisses pending reports and returns a REPORTED offer to ACTIVE', async () => {
       prisma.offer.findUnique.mockResolvedValue(
-        buildOffer({ status: OfferStatus.DISABLED, reportCount: 7 }),
+        buildOffer({ status: OfferStatus.REPORTED, reportCount: 4 }),
+      );
+      const enriched = buildOfferResponse({ status: OfferStatus.ACTIVE });
+      offersService.findById.mockResolvedValue(enriched);
+
+      const result = await service.dismissOfferReports('offer-1', 'admin-1');
+
+      expect(prisma.report.updateMany).toHaveBeenCalledWith({
+        where: { offerId: 'offer-1', status: ReportStatus.PENDING },
+        data: {
+          status: ReportStatus.DISMISSED,
+          resolvedAt: expect.any(Date) as unknown as Date,
+        },
+      });
+      expect(prisma.offer.update).toHaveBeenCalledWith({
+        where: { id: 'offer-1' },
+        data: { reportCount: 0, status: OfferStatus.ACTIVE },
+      });
+      expect(result).toBe(enriched);
+    });
+
+    it('clears reports on an EXPIRED offer without changing its status', async () => {
+      prisma.offer.findUnique.mockResolvedValue(
+        buildOffer({ status: OfferStatus.EXPIRED, reportCount: 2 }),
+      );
+      offersService.findById.mockResolvedValue(buildOfferResponse());
+
+      await service.dismissOfferReports('offer-1', 'admin-1');
+
+      expect(prisma.offer.update).toHaveBeenCalledWith({
+        where: { id: 'offer-1' },
+        data: { reportCount: 0 },
+      });
+    });
+
+    it('throws offer.not_found when the offer is missing or deleted', async () => {
+      prisma.offer.findUnique.mockResolvedValue(
+        buildOffer({ status: OfferStatus.DELETED, reportCount: 3 }),
+      );
+
+      await expect(
+        service.dismissOfferReports('offer-1', 'admin-1'),
+      ).rejects.toMatchObject({ key: ErrorKey.OfferNotFound });
+    });
+
+    it('throws offer.invalid_status_transition when there is nothing to dismiss', async () => {
+      prisma.offer.findUnique.mockResolvedValue(
+        buildOffer({ status: OfferStatus.ACTIVE, reportCount: 0 }),
+      );
+
+      await expect(
+        service.dismissOfferReports('offer-1', 'admin-1'),
+      ).rejects.toMatchObject({ key: ErrorKey.OfferInvalidStatusTransition });
+      expect(prisma.report.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('restoreOffer', () => {
+    it('re-activates a DISABLED offer, keeping its reports as history', async () => {
+      prisma.offer.findUnique.mockResolvedValue(
+        buildOffer({ status: OfferStatus.DISABLED, reportCount: 0 }),
       );
       const enriched = buildOfferResponse({ status: OfferStatus.ACTIVE });
       offersService.findById.mockResolvedValue(enriched);
 
       const result = await service.restoreOffer('offer-1', 'admin-1');
 
-      expect(prisma.report.deleteMany).toHaveBeenCalledWith({
-        where: { offerId: 'offer-1' },
-      });
       expect(prisma.offer.update).toHaveBeenCalledWith({
         where: { id: 'offer-1' },
-        data: {
-          status: OfferStatus.ACTIVE,
-          disabledAt: null,
-          reportCount: 0,
-        },
+        data: { status: OfferStatus.ACTIVE, disabledAt: null, reportCount: 0 },
       });
-      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.report.deleteMany).not.toHaveBeenCalled();
       expect(result).toBe(enriched);
-    });
-
-    it('also accepts REPORTED as a restore source', async () => {
-      prisma.offer.findUnique.mockResolvedValue(
-        buildOffer({ status: OfferStatus.REPORTED, reportCount: 5 }),
-      );
-      offersService.findById.mockResolvedValue(buildOfferResponse());
-
-      await service.restoreOffer('offer-1', 'admin-1');
-
-      expect(prisma.offer.update).toHaveBeenCalled();
     });
 
     it('throws offer.not_found when the offer does not exist', async () => {
@@ -299,7 +358,12 @@ describe('ModerationService', () => {
       ).rejects.toMatchObject({ key: ErrorKey.OfferNotFound });
     });
 
-    it.each([OfferStatus.ACTIVE, OfferStatus.DELETED, OfferStatus.EXPIRED])(
+    it.each([
+      OfferStatus.ACTIVE,
+      OfferStatus.REPORTED,
+      OfferStatus.DELETED,
+      OfferStatus.EXPIRED,
+    ])(
       'throws offer.invalid_status_transition when restoring from %s',
       async (status) => {
         prisma.offer.findUnique.mockResolvedValue(buildOffer({ status }));
@@ -355,8 +419,12 @@ describe('ModerationService', () => {
       await service.listReports({ cursor });
 
       const calls = prisma.report.findMany.mock.calls as unknown[][];
-      const call = calls[0]?.[0] as { where: { OR: unknown[] } };
-      expect(call.where.OR).toHaveLength(2);
+      const call = calls[0]?.[0] as {
+        where: { status: string; AND: { OR: unknown[] }[] };
+      };
+      // only pending reports, plus the cursor predicate
+      expect(call.where.status).toBe('PENDING');
+      expect(call.where.AND[0].OR).toHaveLength(2);
     });
   });
 
