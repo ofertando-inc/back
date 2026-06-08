@@ -140,7 +140,7 @@ describe('ModerationService', () => {
       findMany: jest.Mock;
       updateMany: jest.Mock;
     };
-    moderationLog: { findMany: jest.Mock };
+    moderationLog: { findMany: jest.Mock; create: jest.Mock };
     $transaction: jest.Mock;
   };
   let offersService: jest.Mocked<Pick<OffersService, 'findAll' | 'findById'>>;
@@ -169,7 +169,7 @@ describe('ModerationService', () => {
         findMany: jest.fn(),
         updateMany: jest.fn(),
       },
-      moderationLog: { findMany: jest.fn() },
+      moderationLog: { findMany: jest.fn(), create: jest.fn() },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     offersService = {
@@ -684,7 +684,10 @@ describe('ModerationService', () => {
           }),
         );
 
-      const result = await service.hideComment('comment-1');
+      const result = await service.hideComment('comment-1', 'admin-1', {
+        reason: 'spam',
+        note: 'obvious ad',
+      });
 
       expect(prisma.comment.update).toHaveBeenCalledWith({
         where: { id: 'comment-1' },
@@ -706,6 +709,17 @@ describe('ModerationService', () => {
         where: { id: 'offer-1' },
         data: { commentCount: { decrement: 1 } },
       });
+      // the decision is recorded in the moderation log
+      expect(prisma.moderationLog.create).toHaveBeenCalledWith({
+        data: {
+          actorId: 'admin-1',
+          action: 'HIDE_COMMENT',
+          targetType: 'COMMENT',
+          targetId: 'comment-1',
+          reason: 'spam',
+          note: 'obvious ad',
+        },
+      });
       expect(result.id).toBe('comment-1');
       expect(result.hiddenAt).not.toBeNull();
     });
@@ -723,7 +737,7 @@ describe('ModerationService', () => {
           }),
         );
 
-      await service.hideComment('reply-1');
+      await service.hideComment('reply-1', 'admin-1');
 
       expect(prisma.comment.update).toHaveBeenCalledWith({
         where: { id: 'root-1' },
@@ -736,7 +750,9 @@ describe('ModerationService', () => {
         buildModerationComment({ deletedAt: new Date() }),
       );
 
-      await expect(service.hideComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.hideComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentNotFound,
       });
       expect(prisma.comment.update).not.toHaveBeenCalled();
@@ -747,7 +763,9 @@ describe('ModerationService', () => {
         buildModerationComment({ hiddenAt: new Date() }),
       );
 
-      await expect(service.hideComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.hideComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentInvalidStatusTransition,
       });
       expect(prisma.comment.update).not.toHaveBeenCalled();
@@ -764,7 +782,7 @@ describe('ModerationService', () => {
           buildModerationComment({ hiddenAt: null, reportCount: 0 }),
         );
 
-      await service.dismissComment('comment-1');
+      await service.dismissComment('comment-1', 'admin-1');
 
       expect(prisma.commentReport.updateMany).toHaveBeenCalledWith({
         where: { commentId: 'comment-1', status: ReportStatus.PENDING },
@@ -786,7 +804,9 @@ describe('ModerationService', () => {
         buildModerationComment({ deletedAt: new Date() }),
       );
 
-      await expect(service.dismissComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.dismissComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentNotFound,
       });
     });
@@ -796,7 +816,9 @@ describe('ModerationService', () => {
         buildModerationComment({ hiddenAt: new Date(), reportCount: 0 }),
       );
 
-      await expect(service.dismissComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.dismissComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentInvalidStatusTransition,
       });
       expect(prisma.commentReport.updateMany).not.toHaveBeenCalled();
@@ -813,7 +835,7 @@ describe('ModerationService', () => {
           buildModerationComment({ hiddenAt: null, reportCount: 0 }),
         );
 
-      const result = await service.restoreComment('comment-1');
+      const result = await service.restoreComment('comment-1', 'admin-1');
 
       expect(prisma.comment.update).toHaveBeenCalledWith({
         where: { id: 'comment-1' },
@@ -841,7 +863,7 @@ describe('ModerationService', () => {
           buildModerationComment({ id: 'reply-1', parentId: 'root-1' }),
         );
 
-      await service.restoreComment('reply-1');
+      await service.restoreComment('reply-1', 'admin-1');
 
       expect(prisma.comment.update).toHaveBeenCalledWith({
         where: { id: 'root-1' },
@@ -852,7 +874,9 @@ describe('ModerationService', () => {
     it('throws comment.not_found when the comment is missing or author-deleted', async () => {
       prisma.comment.findUnique.mockResolvedValue(null);
 
-      await expect(service.restoreComment('missing')).rejects.toMatchObject({
+      await expect(
+        service.restoreComment('missing', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentNotFound,
       });
     });
@@ -862,7 +886,9 @@ describe('ModerationService', () => {
         buildModerationComment({ hiddenAt: null, reportCount: 0 }),
       );
 
-      await expect(service.restoreComment('comment-1')).rejects.toMatchObject({
+      await expect(
+        service.restoreComment('comment-1', 'admin-1'),
+      ).rejects.toMatchObject({
         key: ErrorKey.CommentInvalidStatusTransition,
       });
       expect(prisma.comment.update).not.toHaveBeenCalled();

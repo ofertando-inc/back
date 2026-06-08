@@ -1,6 +1,13 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OfferStatus, Prisma, ReportStatus, UserStatus } from '@prisma/client';
+import {
+  ModerationAction,
+  ModerationTargetType,
+  OfferStatus,
+  Prisma,
+  ReportStatus,
+  UserStatus,
+} from '@prisma/client';
 
 import { RefreshTokensService } from '../auth/refresh-tokens.service';
 import { AppException } from '../common/exceptions/app.exception';
@@ -15,6 +22,7 @@ import type { PublicUser } from '../users/types/public-user.type';
 import { ListModerationLogQueryDto } from './dto/list-moderation-log-query.dto';
 import { ListReportedCommentsQueryDto } from './dto/list-reported-comments-query.dto';
 import { ListReportsQueryDto } from './dto/list-reports-query.dto';
+import { ModerationDecisionDto } from './dto/moderation-decision.dto';
 import type { CommentModerationSummary } from './types/comment-moderation-summary.type';
 import type { ModerationLogEntry } from './types/moderation-log-entry.type';
 import type {
@@ -470,7 +478,11 @@ export class ModerationService {
     };
   }
 
-  async hideComment(commentId: string): Promise<CommentModerationSummary> {
+  async hideComment(
+    commentId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<CommentModerationSummary> {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
     });
@@ -502,6 +514,13 @@ export class ModerationService {
         where: { id: comment.offerId },
         data: { commentCount: { decrement: 1 } },
       }),
+      this.logEntry(
+        actorId,
+        ModerationAction.HIDE_COMMENT,
+        ModerationTargetType.COMMENT,
+        commentId,
+        decision,
+      ),
     ];
 
     if (comment.parentId) {
@@ -518,7 +537,11 @@ export class ModerationService {
     return this.findCommentSummary(commentId);
   }
 
-  async dismissComment(commentId: string): Promise<CommentModerationSummary> {
+  async dismissComment(
+    commentId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<CommentModerationSummary> {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
     });
@@ -545,12 +568,23 @@ export class ModerationService {
         where: { id: commentId },
         data: { reportCount: 0 },
       }),
+      this.logEntry(
+        actorId,
+        ModerationAction.DISMISS_COMMENT,
+        ModerationTargetType.COMMENT,
+        commentId,
+        decision,
+      ),
     ]);
 
     return this.findCommentSummary(commentId);
   }
 
-  async restoreComment(commentId: string): Promise<CommentModerationSummary> {
+  async restoreComment(
+    commentId: string,
+    actorId: string,
+    decision?: ModerationDecisionDto,
+  ): Promise<CommentModerationSummary> {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
     });
@@ -577,6 +611,13 @@ export class ModerationService {
         where: { id: comment.offerId },
         data: { commentCount: { increment: 1 } },
       }),
+      this.logEntry(
+        actorId,
+        ModerationAction.RESTORE_COMMENT,
+        ModerationTargetType.COMMENT,
+        commentId,
+        decision,
+      ),
     ];
 
     if (comment.parentId) {
@@ -591,6 +632,27 @@ export class ModerationService {
     await this.prisma.$transaction(ops);
 
     return this.findCommentSummary(commentId);
+  }
+
+  // Builds a moderation-log create to push into an action's transaction, so the
+  // decision (actor, reason, note) is recorded atomically with its effect.
+  private logEntry(
+    actorId: string,
+    action: ModerationAction,
+    targetType: ModerationTargetType,
+    targetId: string,
+    decision?: ModerationDecisionDto,
+  ): Prisma.PrismaPromise<unknown> {
+    return this.prisma.moderationLog.create({
+      data: {
+        actorId,
+        action,
+        targetType,
+        targetId,
+        reason: decision?.reason ?? null,
+        note: decision?.note ?? null,
+      },
+    });
   }
 
   private async findCommentSummary(
