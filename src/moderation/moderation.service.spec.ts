@@ -7,6 +7,7 @@ import {
   OfferStatus,
   Report,
   ReportReason,
+  ReportStatus,
   UserRole,
   UserStatus,
 } from '@prisma/client';
@@ -111,7 +112,9 @@ function buildReport(
     id: 'report-1',
     reason: ReportReason.SCAM,
     comment: null,
+    status: ReportStatus.PENDING,
     createdAt: new Date('2024-06-01T00:00:00Z'),
+    resolvedAt: null,
     userId: 'user-1',
     offerId: 'offer-1',
     user: { id: 'user-1', username: 'reporter' },
@@ -357,6 +360,7 @@ describe('ModerationService', () => {
           id: 'cr1',
           reason: CommentReportReason.SPAM,
           note: 'looks like an ad',
+          status: ReportStatus.PENDING,
           createdAt: new Date('2024-06-01T00:00:00Z'),
           user: { id: 'u1', username: 'reporter' },
         },
@@ -373,6 +377,7 @@ describe('ModerationService', () => {
         id: 'cr1',
         reason: CommentReportReason.SPAM,
         note: 'looks like an ad',
+        status: ReportStatus.PENDING,
         user: { id: 'u1', username: 'reporter' },
       });
       expect(result.nextCursor).toBeNull();

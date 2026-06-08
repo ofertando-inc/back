@@ -1,5 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Comment, CommentReport, CommentReportReason } from '@prisma/client';
+import {
+  Comment,
+  CommentReport,
+  CommentReportReason,
+  ReportStatus,
+} from '@prisma/client';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { PrismaService } from '../prisma/prisma.service';
@@ -30,7 +35,9 @@ function buildReport(overrides: Partial<CommentReport> = {}): CommentReport {
     id: 'report-1',
     reason: CommentReportReason.SPAM,
     note: null,
+    status: ReportStatus.PENDING,
     createdAt: new Date(),
+    resolvedAt: null,
     userId: 'user-1',
     commentId: 'comment-1',
     ...overrides,

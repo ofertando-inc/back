@@ -1,6 +1,12 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Offer, OfferStatus, Report, ReportReason } from '@prisma/client';
+import {
+  Offer,
+  OfferStatus,
+  Report,
+  ReportReason,
+  ReportStatus,
+} from '@prisma/client';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { PrismaService } from '../prisma/prisma.service';
@@ -35,7 +41,9 @@ function buildReport(overrides: Partial<Report> = {}): Report {
     id: 'report-1',
     reason: ReportReason.OTHER,
     comment: null,
+    status: ReportStatus.PENDING,
     createdAt: new Date(),
+    resolvedAt: null,
     userId: 'user-1',
     offerId: 'offer-1',
     ...overrides,

@@ -212,6 +212,7 @@ export class ModerationService {
         id: report.id,
         reason: report.reason,
         note: report.note,
+        status: report.status,
         createdAt: report.createdAt,
         user: report.user,
       })),
@@ -261,6 +262,7 @@ export class ModerationService {
         reason: report.reason,
         // the offer Report stores its free-text in the `comment` column
         note: report.comment,
+        status: report.status,
         createdAt: report.createdAt,
         user: report.user,
       })),
