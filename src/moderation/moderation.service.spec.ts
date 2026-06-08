@@ -127,8 +127,8 @@ function buildReport(
 describe('ModerationService', () => {
   let service: ModerationService;
   let prisma: {
-    offer: { findUnique: jest.Mock; update: jest.Mock };
-    user: { findUnique: jest.Mock; update: jest.Mock };
+    offer: { findUnique: jest.Mock; update: jest.Mock; count: jest.Mock };
+    user: { findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock };
     report: {
       findMany: jest.Mock;
       deleteMany: jest.Mock;
@@ -158,8 +158,8 @@ describe('ModerationService', () => {
   beforeEach(async () => {
     commentThreshold = 3;
     prisma = {
-      offer: { findUnique: jest.fn(), update: jest.fn() },
-      user: { findUnique: jest.fn(), update: jest.fn() },
+      offer: { findUnique: jest.fn(), update: jest.fn(), count: jest.fn() },
+      user: { findUnique: jest.fn(), update: jest.fn(), findMany: jest.fn() },
       report: {
         findMany: jest.fn(),
         deleteMany: jest.fn(),
@@ -592,6 +592,79 @@ describe('ModerationService', () => {
 
       expect(result.items).toHaveLength(2);
       expect(result.nextCursor).not.toBeNull();
+    });
+  });
+
+  describe('listUsers', () => {
+    it('searches by username/email and paginates', async () => {
+      prisma.user.findMany.mockResolvedValue([buildPublicUser({ id: 'u1' })]);
+
+      const result = await service.listUsers({ search: 'bob', limit: 5 });
+
+      const calls = prisma.user.findMany.mock.calls as unknown[][];
+      const call = calls[0]?.[0] as { where: { OR: unknown[] } };
+      expect(call.where.OR).toEqual([
+        { username: { contains: 'bob', mode: 'insensitive' } },
+        { email: { contains: 'bob', mode: 'insensitive' } },
+      ]);
+      expect(result.items[0]).toMatchObject({ id: 'u1' });
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('returns a nextCursor when more users exist', async () => {
+      prisma.user.findMany.mockResolvedValue([
+        buildPublicUser({ id: 'u1' }),
+        buildPublicUser({ id: 'u2' }),
+        buildPublicUser({ id: 'u3' }),
+      ]);
+
+      const result = await service.listUsers({ limit: 2 });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.nextCursor).not.toBeNull();
+    });
+  });
+
+  describe('getUserDetail', () => {
+    it('returns the user with content counts and moderation history', async () => {
+      prisma.user.findUnique.mockResolvedValue(buildPublicUser({ id: 'u1' }));
+      prisma.$transaction.mockResolvedValueOnce([
+        3,
+        12,
+        [
+          {
+            id: 'log-1',
+            action: 'DISABLE_USER',
+            targetType: 'USER',
+            targetId: 'u1',
+            reason: 'abuse',
+            note: null,
+            createdAt: new Date('2024-06-02T00:00:00Z'),
+            actor: { id: 'admin-1', username: 'admin' },
+          },
+        ],
+      ]);
+
+      const result = await service.getUserDetail('u1');
+
+      expect(result).toMatchObject({
+        id: 'u1',
+        counts: { offers: 3, comments: 12 },
+      });
+      expect(result.moderationHistory[0]).toMatchObject({
+        action: 'DISABLE_USER',
+        targetId: 'u1',
+        reason: 'abuse',
+        actor: { username: 'admin' },
+      });
+    });
+
+    it('throws user.not_found when the user does not exist', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.getUserDetail('missing')).rejects.toMatchObject({
+        key: ErrorKey.UserNotFound,
+      });
     });
   });
 
