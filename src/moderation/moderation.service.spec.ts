@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   Comment,
+  CommentReportReason,
   Offer,
   OfferStatus,
   Report,
@@ -127,7 +128,7 @@ describe('ModerationService', () => {
     user: { findUnique: jest.Mock; update: jest.Mock };
     report: { findMany: jest.Mock; deleteMany: jest.Mock };
     comment: { findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock };
-    commentReport: { deleteMany: jest.Mock };
+    commentReport: { deleteMany: jest.Mock; findMany: jest.Mock };
     $transaction: jest.Mock;
   };
   let offersService: jest.Mocked<Pick<OffersService, 'findAll' | 'findById'>>;
@@ -147,7 +148,7 @@ describe('ModerationService', () => {
         update: jest.fn(),
         findMany: jest.fn(),
       },
-      commentReport: { deleteMany: jest.fn() },
+      commentReport: { deleteMany: jest.fn(), findMany: jest.fn() },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     offersService = {
@@ -345,6 +346,73 @@ describe('ModerationService', () => {
       const calls = prisma.report.findMany.mock.calls as unknown[][];
       const call = calls[0]?.[0] as { where: { OR: unknown[] } };
       expect(call.where.OR).toHaveLength(2);
+    });
+  });
+
+  describe('listCommentReports', () => {
+    it('returns the report details for a comment', async () => {
+      prisma.comment.findUnique.mockResolvedValue(buildModerationComment());
+      prisma.commentReport.findMany.mockResolvedValue([
+        {
+          id: 'cr1',
+          reason: CommentReportReason.SPAM,
+          note: 'looks like an ad',
+          createdAt: new Date('2024-06-01T00:00:00Z'),
+          user: { id: 'u1', username: 'reporter' },
+        },
+      ]);
+
+      const result = await service.listCommentReports('comment-1', {
+        limit: 5,
+      });
+
+      const calls = prisma.commentReport.findMany.mock.calls as unknown[][];
+      const call = calls[0]?.[0] as { where: { commentId: string } };
+      expect(call.where.commentId).toBe('comment-1');
+      expect(result.items[0]).toMatchObject({
+        id: 'cr1',
+        reason: CommentReportReason.SPAM,
+        note: 'looks like an ad',
+        user: { id: 'u1', username: 'reporter' },
+      });
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('throws comment.not_found when the comment is missing', async () => {
+      prisma.comment.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.listCommentReports('missing', {}),
+      ).rejects.toMatchObject({ key: ErrorKey.CommentNotFound });
+    });
+  });
+
+  describe('listOfferReports', () => {
+    it('returns the report details for an offer (comment text mapped to note)', async () => {
+      prisma.offer.findUnique.mockResolvedValue(buildOffer());
+      prisma.report.findMany.mockResolvedValue([
+        buildReport({ id: 'r1', comment: 'scammy link' }),
+      ]);
+
+      const result = await service.listOfferReports('offer-1', { limit: 5 });
+
+      const calls = prisma.report.findMany.mock.calls as unknown[][];
+      const call = calls[0]?.[0] as { where: { offerId: string } };
+      expect(call.where.offerId).toBe('offer-1');
+      expect(result.items[0]).toMatchObject({
+        id: 'r1',
+        reason: ReportReason.SCAM,
+        note: 'scammy link',
+        user: { id: 'user-1', username: 'reporter' },
+      });
+    });
+
+    it('throws offer.not_found when the offer is missing', async () => {
+      prisma.offer.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.listOfferReports('missing', {}),
+      ).rejects.toMatchObject({ key: ErrorKey.OfferNotFound });
     });
   });
 

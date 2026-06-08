@@ -1052,6 +1052,42 @@
             "description": "Admin only. Clears hiddenAt, resets reportCount to 0 and purges the reports. Re-counts the comment if it was hidden."
           },
           "response": []
+        },
+        {
+          "name": "List comment reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments/{{commentId}}/reports?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments", "{{commentId}}", "reports"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Lists the reports on a comment: { id, reason, note, user{id,username}, createdAt }, newest first. Context to read before deciding hide/dismiss/restore."
+          },
+          "response": []
+        },
+        {
+          "name": "List offer reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/offers/{{offerId}}/reports?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "offers", "{{offerId}}", "reports"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Lists the reports on an offer: { id, reason, note, user{id,username}, createdAt }, newest first. note maps the legacy report `comment` text field."
+          },
+          "response": []
         }
       ]
     },

@@ -15,6 +15,10 @@ import type { PublicUser } from '../users/types/public-user.type';
 import { ListReportedCommentsQueryDto } from './dto/list-reported-comments-query.dto';
 import { ListReportsQueryDto } from './dto/list-reports-query.dto';
 import type { CommentModerationSummary } from './types/comment-moderation-summary.type';
+import type {
+  CommentReportDetail,
+  OfferReportDetail,
+} from './types/report-detail.type';
 import type { ReportSummary } from './types/report-summary.type';
 
 type ReportCursor = {
@@ -162,6 +166,103 @@ export class ModerationService {
         createdAt: report.createdAt,
         user: report.user,
         offer: report.offer,
+      })),
+      nextCursor:
+        hasMore && last
+          ? encodeCursor<ReportCursor>({
+              createdAt: last.createdAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
+  }
+
+  async listCommentReports(
+    commentId: string,
+    query: ListReportsQueryDto,
+  ): Promise<PaginatedResult<CommentReportDetail>> {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+    });
+    if (!comment) {
+      throw new AppException(ErrorKey.CommentNotFound, HttpStatus.NOT_FOUND);
+    }
+
+    const limit = query.limit ?? 20;
+    const where: Prisma.CommentReportWhereInput = { commentId };
+    if (query.cursor) {
+      where.AND = [
+        this.buildReportCursorWhere(decodeCursor<ReportCursor>(query.cursor)),
+      ];
+    }
+
+    const items = await this.prisma.commentReport.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      include: { user: { select: { id: true, username: true } } },
+    });
+
+    const hasMore = items.length > limit;
+    const trimmed = hasMore ? items.slice(0, limit) : items;
+    const last = trimmed[trimmed.length - 1];
+
+    return {
+      items: trimmed.map((report) => ({
+        id: report.id,
+        reason: report.reason,
+        note: report.note,
+        createdAt: report.createdAt,
+        user: report.user,
+      })),
+      nextCursor:
+        hasMore && last
+          ? encodeCursor<ReportCursor>({
+              createdAt: last.createdAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
+  }
+
+  async listOfferReports(
+    offerId: string,
+    query: ListReportsQueryDto,
+  ): Promise<PaginatedResult<OfferReportDetail>> {
+    const offer = await this.prisma.offer.findUnique({
+      where: { id: offerId },
+    });
+    if (!offer) {
+      throw new AppException(ErrorKey.OfferNotFound, HttpStatus.NOT_FOUND);
+    }
+
+    const limit = query.limit ?? 20;
+    const where: Prisma.ReportWhereInput = { offerId };
+    if (query.cursor) {
+      where.AND = [
+        this.buildReportCursorWhere(decodeCursor<ReportCursor>(query.cursor)),
+      ];
+    }
+
+    const items = await this.prisma.report.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      include: { user: { select: { id: true, username: true } } },
+    });
+
+    const hasMore = items.length > limit;
+    const trimmed = hasMore ? items.slice(0, limit) : items;
+    const last = trimmed[trimmed.length - 1];
+
+    return {
+      items: trimmed.map((report) => ({
+        id: report.id,
+        reason: report.reason,
+        // the offer Report stores its free-text in the `comment` column
+        note: report.comment,
+        createdAt: report.createdAt,
+        user: report.user,
       })),
       nextCursor:
         hasMore && last
