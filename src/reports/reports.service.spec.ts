@@ -58,6 +58,7 @@ type PrismaOfferMock = {
 type PrismaReportMock = {
   findUnique: jest.Mock;
   create: jest.Mock;
+  update: jest.Mock;
 };
 
 describe('ReportsService', () => {
@@ -74,7 +75,7 @@ describe('ReportsService', () => {
   beforeEach(async () => {
     threshold = 3;
     offer = { findUnique: jest.fn(), update: jest.fn() };
-    report = { findUnique: jest.fn(), create: jest.fn() };
+    report = { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() };
     prisma = {
       offer,
       report,
@@ -152,15 +153,44 @@ describe('ReportsService', () => {
       expect(result).toEqual({ status: OfferStatus.REPORTED });
     });
 
-    it('is idempotent when the user has already reported the offer', async () => {
+    it('is idempotent when the user already has a pending report on the offer', async () => {
       offer.findUnique.mockResolvedValue(buildOffer({ reportCount: 2 }));
-      report.findUnique.mockResolvedValue(buildReport());
+      report.findUnique.mockResolvedValue(
+        buildReport({ status: ReportStatus.PENDING }),
+      );
 
       const result = await service.create('user-1', 'offer-1', dto);
 
       expect(report.create).not.toHaveBeenCalled();
+      expect(report.update).not.toHaveBeenCalled();
       expect(offer.update).not.toHaveBeenCalled();
       expect(result).toEqual({ status: OfferStatus.ACTIVE });
+    });
+
+    it('re-opens a resolved report from the same user and re-counts toward the threshold', async () => {
+      offer.findUnique.mockResolvedValue(buildOffer({ reportCount: 2 }));
+      report.findUnique.mockResolvedValue(
+        buildReport({ status: ReportStatus.RESOLVED }),
+      );
+      offer.update
+        .mockResolvedValueOnce(buildOffer({ reportCount: 3 }))
+        .mockResolvedValueOnce(
+          buildOffer({ reportCount: 3, status: OfferStatus.REPORTED }),
+        );
+
+      const result = await service.create('user-1', 'offer-1', dto);
+
+      expect(report.update).toHaveBeenCalledWith({
+        where: { id: 'report-1' },
+        data: {
+          status: ReportStatus.PENDING,
+          resolvedAt: null,
+          reason: ReportReason.SCAM,
+          comment: 'fishy stuff',
+        },
+      });
+      expect(report.create).not.toHaveBeenCalled();
+      expect(result).toEqual({ status: OfferStatus.REPORTED });
     });
 
     it('stores null comment when not provided', async () => {

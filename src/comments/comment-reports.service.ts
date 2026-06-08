@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { CommentReport } from '@prisma/client';
+import { CommentReport, ReportStatus } from '@prisma/client';
 
 import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
@@ -36,19 +36,33 @@ export class CommentReportsService {
         where: { userId_commentId: { userId, commentId } },
       });
 
-      // One report per user/comment: re-reporting is a no-op.
-      if (existing) {
+      // A still-open report from this user is a no-op (one report per cycle).
+      if (existing && existing.status === ReportStatus.PENDING) {
         return { reportCount: comment.reportCount };
       }
 
-      await tx.commentReport.create({
-        data: {
-          userId,
-          commentId,
-          reason: dto.reason,
-          note: dto.note ?? null,
-        },
-      });
+      if (existing) {
+        // The user's previous report was resolved/dismissed: re-open it so the
+        // comment can climb back into the moderation queue.
+        await tx.commentReport.update({
+          where: { id: existing.id },
+          data: {
+            status: ReportStatus.PENDING,
+            resolvedAt: null,
+            reason: dto.reason,
+            note: dto.note ?? null,
+          },
+        });
+      } else {
+        await tx.commentReport.create({
+          data: {
+            userId,
+            commentId,
+            reason: dto.reason,
+            note: dto.note ?? null,
+          },
+        });
+      }
 
       const incremented = await tx.comment.update({
         where: { id: commentId },
