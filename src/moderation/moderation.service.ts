@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OfferStatus, Prisma, UserStatus } from '@prisma/client';
+import { OfferStatus, Prisma, ReportStatus, UserStatus } from '@prisma/client';
 
 import { RefreshTokensService } from '../auth/refresh-tokens.service';
 import { AppException } from '../common/exceptions/app.exception';
@@ -396,12 +396,17 @@ export class ModerationService {
       );
     }
 
-    // Hiding removes the comment from public view, so it stops counting toward
-    // the offer commentCount (and its root replyCount), like an author deletion.
+    // Hiding takes a moderation decision: the pending reports are resolved and
+    // the comment leaves public view, so it stops counting toward the offer
+    // commentCount (and its root replyCount), like an author deletion.
     const ops: Prisma.PrismaPromise<unknown>[] = [
       this.prisma.comment.update({
         where: { id: commentId },
-        data: { hiddenAt: new Date() },
+        data: { hiddenAt: new Date(), reportCount: 0 },
+      }),
+      this.prisma.commentReport.updateMany({
+        where: { commentId, status: ReportStatus.PENDING },
+        data: { status: ReportStatus.RESOLVED, resolvedAt: new Date() },
       }),
       this.prisma.offer.update({
         where: { id: comment.offerId },
@@ -423,6 +428,38 @@ export class ModerationService {
     return this.findCommentSummary(commentId);
   }
 
+  async dismissComment(commentId: string): Promise<CommentModerationSummary> {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+    });
+
+    if (!comment || comment.deletedAt) {
+      throw new AppException(ErrorKey.CommentNotFound, HttpStatus.NOT_FOUND);
+    }
+
+    // Dismiss = the reports are unfounded: clear them and keep the comment
+    // visible. Nothing to do if it is hidden or has no pending report.
+    if (comment.hiddenAt || comment.reportCount === 0) {
+      throw new AppException(
+        ErrorKey.CommentInvalidStatusTransition,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.commentReport.updateMany({
+        where: { commentId, status: ReportStatus.PENDING },
+        data: { status: ReportStatus.DISMISSED, resolvedAt: new Date() },
+      }),
+      this.prisma.comment.update({
+        where: { id: commentId },
+        data: { reportCount: 0 },
+      }),
+    ]);
+
+    return this.findCommentSummary(commentId);
+  }
+
   async restoreComment(commentId: string): Promise<CommentModerationSummary> {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
@@ -432,8 +469,9 @@ export class ModerationService {
       throw new AppException(ErrorKey.CommentNotFound, HttpStatus.NOT_FOUND);
     }
 
-    // Nothing to clear: the comment is neither hidden nor reported.
-    if (!comment.hiddenAt && comment.reportCount === 0) {
+    // Restore only un-hides a moderator-hidden comment. Its reports stay
+    // RESOLVED (history is kept); use dismiss to clear a reported-but-visible one.
+    if (!comment.hiddenAt) {
       throw new AppException(
         ErrorKey.CommentInvalidStatusTransition,
         HttpStatus.BAD_REQUEST,
@@ -441,31 +479,23 @@ export class ModerationService {
     }
 
     const ops: Prisma.PrismaPromise<unknown>[] = [
-      this.prisma.commentReport.deleteMany({ where: { commentId } }),
       this.prisma.comment.update({
         where: { id: commentId },
-        data: { hiddenAt: null, reportCount: 0 },
+        data: { hiddenAt: null },
+      }),
+      this.prisma.offer.update({
+        where: { id: comment.offerId },
+        data: { commentCount: { increment: 1 } },
       }),
     ];
 
-    // Only a hidden comment was uncounted; un-hiding it restores the counts.
-    // A merely-reported (still visible) comment was always counted.
-    if (comment.hiddenAt) {
+    if (comment.parentId) {
       ops.push(
-        this.prisma.offer.update({
-          where: { id: comment.offerId },
-          data: { commentCount: { increment: 1 } },
+        this.prisma.comment.update({
+          where: { id: comment.parentId },
+          data: { replyCount: { increment: 1 } },
         }),
       );
-
-      if (comment.parentId) {
-        ops.push(
-          this.prisma.comment.update({
-            where: { id: comment.parentId },
-            data: { replyCount: { increment: 1 } },
-          }),
-        );
-      }
     }
 
     await this.prisma.$transaction(ops);

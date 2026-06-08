@@ -131,7 +131,11 @@ describe('ModerationService', () => {
     user: { findUnique: jest.Mock; update: jest.Mock };
     report: { findMany: jest.Mock; deleteMany: jest.Mock };
     comment: { findUnique: jest.Mock; update: jest.Mock; findMany: jest.Mock };
-    commentReport: { deleteMany: jest.Mock; findMany: jest.Mock };
+    commentReport: {
+      deleteMany: jest.Mock;
+      findMany: jest.Mock;
+      updateMany: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
   let offersService: jest.Mocked<Pick<OffersService, 'findAll' | 'findById'>>;
@@ -151,7 +155,11 @@ describe('ModerationService', () => {
         update: jest.fn(),
         findMany: jest.fn(),
       },
-      commentReport: { deleteMany: jest.fn(), findMany: jest.fn() },
+      commentReport: {
+        deleteMany: jest.fn(),
+        findMany: jest.fn(),
+        updateMany: jest.fn(),
+      },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
     offersService = {
@@ -558,7 +566,18 @@ describe('ModerationService', () => {
 
       expect(prisma.comment.update).toHaveBeenCalledWith({
         where: { id: 'comment-1' },
-        data: { hiddenAt: expect.any(Date) as unknown as Date },
+        data: {
+          hiddenAt: expect.any(Date) as unknown as Date,
+          reportCount: 0,
+        },
+      });
+      // the pending reports become RESOLVED
+      expect(prisma.commentReport.updateMany).toHaveBeenCalledWith({
+        where: { commentId: 'comment-1', status: ReportStatus.PENDING },
+        data: {
+          status: ReportStatus.RESOLVED,
+          resolvedAt: expect.any(Date) as unknown as Date,
+        },
       });
       // a hidden comment stops counting toward the offer commentCount
       expect(prisma.offer.update).toHaveBeenCalledWith({
@@ -613,35 +632,8 @@ describe('ModerationService', () => {
     });
   });
 
-  describe('restoreComment', () => {
-    it('clears hiddenAt, resets reportCount and purges reports', async () => {
-      prisma.comment.findUnique
-        .mockResolvedValueOnce(
-          buildModerationComment({ hiddenAt: new Date(), reportCount: 6 }),
-        )
-        .mockResolvedValueOnce(
-          buildModerationComment({ hiddenAt: null, reportCount: 0 }),
-        );
-
-      const result = await service.restoreComment('comment-1');
-
-      expect(prisma.commentReport.deleteMany).toHaveBeenCalledWith({
-        where: { commentId: 'comment-1' },
-      });
-      expect(prisma.comment.update).toHaveBeenCalledWith({
-        where: { id: 'comment-1' },
-        data: { hiddenAt: null, reportCount: 0 },
-      });
-      // un-hiding brings it back into the offer commentCount
-      expect(prisma.offer.update).toHaveBeenCalledWith({
-        where: { id: 'offer-1' },
-        data: { commentCount: { increment: 1 } },
-      });
-      expect(result.hiddenAt).toBeNull();
-      expect(result.reportCount).toBe(0);
-    });
-
-    it('clears reports on a merely-reported comment without touching counts', async () => {
+  describe('dismissComment', () => {
+    it('dismisses pending reports and clears the count, keeping the comment visible', async () => {
       prisma.comment.findUnique
         .mockResolvedValueOnce(
           buildModerationComment({ hiddenAt: null, reportCount: 5 }),
@@ -650,13 +642,89 @@ describe('ModerationService', () => {
           buildModerationComment({ hiddenAt: null, reportCount: 0 }),
         );
 
-      await service.restoreComment('comment-1');
+      await service.dismissComment('comment-1');
 
-      expect(prisma.commentReport.deleteMany).toHaveBeenCalledWith({
-        where: { commentId: 'comment-1' },
+      expect(prisma.commentReport.updateMany).toHaveBeenCalledWith({
+        where: { commentId: 'comment-1', status: ReportStatus.PENDING },
+        data: {
+          status: ReportStatus.DISMISSED,
+          resolvedAt: expect.any(Date) as unknown as Date,
+        },
       });
-      // never hidden, so it was always counted: no commentCount change
+      expect(prisma.comment.update).toHaveBeenCalledWith({
+        where: { id: 'comment-1' },
+        data: { reportCount: 0 },
+      });
+      // stays visible: no commentCount change
       expect(prisma.offer.update).not.toHaveBeenCalled();
+    });
+
+    it('throws comment.not_found when the comment is missing or author-deleted', async () => {
+      prisma.comment.findUnique.mockResolvedValue(
+        buildModerationComment({ deletedAt: new Date() }),
+      );
+
+      await expect(service.dismissComment('comment-1')).rejects.toMatchObject({
+        key: ErrorKey.CommentNotFound,
+      });
+    });
+
+    it('throws comment.invalid_status_transition when hidden or unreported', async () => {
+      prisma.comment.findUnique.mockResolvedValue(
+        buildModerationComment({ hiddenAt: new Date(), reportCount: 0 }),
+      );
+
+      await expect(service.dismissComment('comment-1')).rejects.toMatchObject({
+        key: ErrorKey.CommentInvalidStatusTransition,
+      });
+      expect(prisma.commentReport.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('restoreComment', () => {
+    it('un-hides a hidden comment and restores the count, keeping reports', async () => {
+      prisma.comment.findUnique
+        .mockResolvedValueOnce(
+          buildModerationComment({ hiddenAt: new Date(), reportCount: 0 }),
+        )
+        .mockResolvedValueOnce(
+          buildModerationComment({ hiddenAt: null, reportCount: 0 }),
+        );
+
+      const result = await service.restoreComment('comment-1');
+
+      expect(prisma.comment.update).toHaveBeenCalledWith({
+        where: { id: 'comment-1' },
+        data: { hiddenAt: null },
+      });
+      expect(prisma.offer.update).toHaveBeenCalledWith({
+        where: { id: 'offer-1' },
+        data: { commentCount: { increment: 1 } },
+      });
+      // history is kept: reports are not deleted
+      expect(prisma.commentReport.deleteMany).not.toHaveBeenCalled();
+      expect(result.hiddenAt).toBeNull();
+    });
+
+    it('also restores the root replyCount for a hidden reply', async () => {
+      prisma.comment.findUnique
+        .mockResolvedValueOnce(
+          buildModerationComment({
+            id: 'reply-1',
+            parentId: 'root-1',
+            hiddenAt: new Date(),
+          }),
+        )
+        .mockResolvedValueOnce(
+          buildModerationComment({ id: 'reply-1', parentId: 'root-1' }),
+        );
+
+      await service.restoreComment('reply-1');
+
+      expect(prisma.comment.update).toHaveBeenCalledWith({
+        where: { id: 'root-1' },
+        data: { replyCount: { increment: 1 } },
+      });
     });
 
     it('throws comment.not_found when the comment is missing or author-deleted', async () => {
@@ -667,7 +735,7 @@ describe('ModerationService', () => {
       });
     });
 
-    it('throws comment.invalid_status_transition when nothing to clear', async () => {
+    it('throws comment.invalid_status_transition when the comment is not hidden', async () => {
       prisma.comment.findUnique.mockResolvedValue(
         buildModerationComment({ hiddenAt: null, reportCount: 0 }),
       );
@@ -675,7 +743,7 @@ describe('ModerationService', () => {
       await expect(service.restoreComment('comment-1')).rejects.toMatchObject({
         key: ErrorKey.CommentInvalidStatusTransition,
       });
-      expect(prisma.commentReport.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.comment.update).not.toHaveBeenCalled();
     });
   });
 });
