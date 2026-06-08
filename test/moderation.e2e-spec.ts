@@ -117,6 +117,11 @@ type ModerationLogListBody = {
   nextCursor: string | null;
 };
 
+type ModerationSummaryBody = {
+  pendingComments: number;
+  pendingOfferReports: number;
+};
+
 function extractCookie(name: string, setCookieHeader: unknown): string {
   const cookies = Array.isArray(setCookieHeader)
     ? (setCookieHeader as string[])
@@ -885,6 +890,57 @@ describe('Moderation flow (e2e)', () => {
         reason: 'spam',
         note: 'obvious ad',
         actor: { username: 'admin' },
+      });
+    });
+  });
+
+  describe('Moderation summary', () => {
+    it('rejects /admin/moderation/summary as a regular USER with 403', async () => {
+      const user = await registerUser('user@example.com', 'user');
+      const res = await request(app.getHttpServer())
+        .get('/admin/moderation/summary')
+        .set('Authorization', `Bearer ${user.accessToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('counts the pending comment queue and pending offer reports', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+
+      // a reported comment that crossed COMMENT_REPORT_THRESHOLD (2)
+      const created = await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments`)
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .send({ content: 'reported' });
+      const commentId = (created.body as { id: string }).id;
+      const c1 = await registerUser('c1@example.com', 'c1');
+      const c2 = await registerUser('c2@example.com', 'c2');
+      for (const u of [c1, c2]) {
+        await request(app.getHttpServer())
+          .post(`/offers/${offer.id}/comments/${commentId}/reports`)
+          .set('Authorization', `Bearer ${u.accessToken}`)
+          .send({ reason: 'SPAM' });
+      }
+
+      // three pending reports on the offer (REPORT_THRESHOLD is 3)
+      const o1 = await registerUser('o1@example.com', 'o1');
+      const o2 = await registerUser('o2@example.com', 'o2');
+      const o3 = await registerUser('o3@example.com', 'o3');
+      for (const u of [o1, o2, o3]) {
+        await request(app.getHttpServer())
+          .post(`/offers/${offer.id}/reports`)
+          .set('Authorization', `Bearer ${u.accessToken}`)
+          .send({ reason: ReportReason.SCAM });
+      }
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/moderation/summary')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body as ModerationSummaryBody).toEqual({
+        pendingComments: 1,
+        pendingOfferReports: 3,
       });
     });
   });
