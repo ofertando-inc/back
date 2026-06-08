@@ -1,6 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { OfferStatus, ReportReason, UserRole } from '@prisma/client';
+import {
+  OfferStatus,
+  ReportReason,
+  ReportStatus,
+  UserRole,
+} from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -86,6 +91,7 @@ type ReportDetailBody = {
   id: string;
   reason: string;
   note: string | null;
+  status: string;
   createdAt: string;
   user: { id: string; username: string };
 };
@@ -346,7 +352,7 @@ describe('Moderation flow (e2e)', () => {
       expect(body.key).toBe('offer.invalid_status_transition');
     });
 
-    it('purges reports on restore so the same reporters can report again and re-trigger REPORTED', async () => {
+    it('dismiss keeps reports as history and the same reporters re-trigger REPORTED via re-open', async () => {
       // REPORT_THRESHOLD is 3 in the test environment
       const author = await registerUser('author@example.com', 'author');
       const admin = await registerAdmin('admin@example.com', 'admin');
@@ -367,23 +373,25 @@ describe('Moderation flow (e2e)', () => {
       const firstTrigger = await report(r3.accessToken);
       expect((firstTrigger.body as { status: string }).status).toBe('REPORTED');
 
-      // Admin reviews: disable then restore
-      await request(app.getHttpServer())
-        .patch(`/admin/offers/${offer.id}/disable`)
-        .set('Authorization', `Bearer ${admin.accessToken}`)
-        .expect(200);
-      await request(app.getHttpServer())
-        .patch(`/admin/offers/${offer.id}/restore`)
-        .set('Authorization', `Bearer ${admin.accessToken}`)
-        .expect(200);
+      // Admin dismisses: offer back to ACTIVE, reportCount cleared
+      const dismissed = await request(app.getHttpServer())
+        .patch(`/admin/offers/${offer.id}/dismiss`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(dismissed.status).toBe(200);
+      expect((dismissed.body as OfferBody).status).toBe('ACTIVE');
+      expect((dismissed.body as OfferBody).reportCount).toBe(0);
 
-      // Reports must be purged
+      // Reports are kept as history (DISMISSED), not purged
       const remaining = await prisma.report.count({
         where: { offerId: offer.id },
       });
-      expect(remaining).toBe(0);
+      expect(remaining).toBe(3);
+      const pending = await prisma.report.count({
+        where: { offerId: offer.id, status: ReportStatus.PENDING },
+      });
+      expect(pending).toBe(0);
 
-      // Second round: the SAME reporters can report again and re-trigger REPORTED
+      // Second round: the SAME reporters re-report -> reports re-open -> REPORTED
       const r1Again = await report(r1.accessToken);
       expect(r1Again.status).toBe(201);
       await report(r2.accessToken);
@@ -719,6 +727,44 @@ describe('Moderation flow (e2e)', () => {
       expect((res.body as ErrorBody).key).toBe(
         'comment.invalid_status_transition',
       );
+    });
+
+    it('dismisses a reported comment: drops from the queue, stays visible, reports kept as DISMISSED', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'fine');
+      const commentId = (created.body as { id: string }).id;
+      await flagComment(offer.id, commentId);
+
+      const dismissed = await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/dismiss`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(dismissed.status).toBe(200);
+
+      // dropped from the moderation queue
+      const queue = await request(app.getHttpServer())
+        .get('/admin/comments')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect((queue.body as CommentModerationListBody).items).toHaveLength(0);
+
+      // still visible with its content in the thread
+      const thread = await request(app.getHttpServer()).get(
+        `/offers/${offer.id}/comments`,
+      );
+      const item = (thread.body as ThreadListBody).items.find(
+        (c) => c.id === commentId,
+      );
+      expect(item?.content).toBe('fine');
+      expect(item?.hidden).toBe(false);
+
+      // reports are kept as history, marked DISMISSED
+      const reports = await request(app.getHttpServer())
+        .get(`/admin/comments/${commentId}/reports`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      const reportItems = (reports.body as ReportDetailListBody).items;
+      expect(reportItems).toHaveLength(2);
+      expect(reportItems.every((r) => r.status === 'DISMISSED')).toBe(true);
     });
   });
 

@@ -890,6 +890,20 @@
           "response": []
         },
         {
+          "name": "Dismiss offer reports",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/offers/{{offerId}}/dismiss",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "offers", "{{offerId}}", "dismiss"]
+            },
+            "description": "Admin only. The reports are unfounded: marks them DISMISSED (kept as history), resets reportCount and returns a REPORTED offer to ACTIVE. Rejected with offer.invalid_status_transition if there is nothing to dismiss."
+          },
+          "response": []
+        },
+        {
           "name": "List reports",
           "request": {
             "method": "GET",
@@ -914,7 +928,8 @@
                   "disabled": true
                 }
               ]
-            }
+            },
+            "description": "Admin only. Offer report moderation queue: only PENDING reports (resolved/dismissed ones drop out). Resolution is per-offer via disable or dismiss."
           },
           "response": []
         },
@@ -1040,6 +1055,20 @@
           "response": []
         },
         {
+          "name": "Dismiss comment",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments/{{commentId}}/dismiss",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments", "{{commentId}}", "dismiss"]
+            },
+            "description": "Admin only. The reports are unfounded: marks them DISMISSED (kept as history), resets reportCount, keeps the comment visible. Rejected with comment.invalid_status_transition if hidden or unreported."
+          },
+          "response": []
+        },
+        {
           "name": "Restore comment",
           "request": {
             "method": "PATCH",
@@ -1049,7 +1078,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["admin", "comments", "{{commentId}}", "restore"]
             },
-            "description": "Admin only. Clears hiddenAt, resets reportCount to 0 and purges the reports. Re-counts the comment if it was hidden."
+            "description": "Admin only. Un-hides a moderator-hidden comment (clears hiddenAt) and brings it back into the counts. Reports are kept as history. Rejected with comment.invalid_status_transition if the comment is not hidden."
           },
           "response": []
         },
