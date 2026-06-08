@@ -1123,6 +1123,20 @@
           "response": []
         },
         {
+          "name": "Moderation summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/moderation/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "moderation", "summary"]
+            },
+            "description": "Admin only. Dashboard counters for nav badges: { pendingComments, pendingOfferReports } — sizes of the comment moderation queue and the pending offer reports."
+          },
+          "response": []
+        },
+        {
           "name": "Moderation log",
           "request": {
             "method": "GET",

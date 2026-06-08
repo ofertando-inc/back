@@ -25,6 +25,7 @@ import { ListReportsQueryDto } from './dto/list-reports-query.dto';
 import { ModerationDecisionDto } from './dto/moderation-decision.dto';
 import type { CommentModerationSummary } from './types/comment-moderation-summary.type';
 import type { ModerationLogEntry } from './types/moderation-log-entry.type';
+import type { ModerationSummary } from './types/moderation-summary.type';
 import type {
   CommentReportDetail,
   OfferReportDetail,
@@ -355,6 +356,24 @@ export class ModerationService {
             })
           : null,
     };
+  }
+
+  async getModerationSummary(): Promise<ModerationSummary> {
+    const threshold = this.commentReportThreshold();
+
+    const [pendingComments, pendingOfferReports] =
+      await this.prisma.$transaction([
+        this.prisma.comment.count({
+          where: {
+            reportCount: { gte: threshold },
+            hiddenAt: null,
+            deletedAt: null,
+          },
+        }),
+        this.prisma.report.count({ where: { status: ReportStatus.PENDING } }),
+      ]);
+
+    return { pendingComments, pendingOfferReports };
   }
 
   async listModerationLog(
