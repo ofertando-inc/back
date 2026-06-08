@@ -18,7 +18,9 @@ import { ListOffersQueryDto } from '../offers/dto/list-offers-query.dto';
 import { OffersExpirationService } from '../offers/offers-expiration.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
 import type { PublicUser } from '../users/types/public-user.type';
+import { ListReportsQueryDto } from './dto/list-reports-query.dto';
 import { ModerationService } from './moderation.service';
+import type { OfferReportDetail } from './types/report-detail.type';
 
 @UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin/offers')
@@ -57,5 +59,13 @@ export class AdminOffersController {
     @CurrentUser() admin: PublicUser,
   ): Promise<OfferResponse> {
     return this.moderationService.restoreOffer(id, admin.id);
+  }
+
+  @Get(':id/reports')
+  reports(
+    @Param('id') id: string,
+    @Query() query: ListReportsQueryDto,
+  ): Promise<PaginatedResult<OfferReportDetail>> {
+    return this.moderationService.listOfferReports(id, query);
   }
 }

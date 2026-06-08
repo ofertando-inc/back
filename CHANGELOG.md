@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added admin comment moderation in `ModerationService` + `AdminCommentsController`: `GET /admin/comments` (queue of live, non-hidden comments at or above the report threshold, most-reported first), `PATCH /admin/comments/:id/hide` and `PATCH /admin/comments/:id/restore` (clears `hiddenAt`, resets `reportCount`, purges reports), guarded by `JwtAuthGuard + AdminGuard`
 - Generalized comment masking: a comment removed by its author (`deletedAt`) or hidden by a moderator (`hiddenAt`) is masked the same way (content nulled) while threads with a surviving live reply are preserved; `CommentResponse` exposes a `hidden` flag next to `deleted`, and hiding/restoring keeps the offer `commentCount` and root `replyCount` consistent
 - Updated the Postman collection with comment reporting (Comments folder) and admin comment moderation (Moderation folder: list reported comments, hide, restore)
+- Added per-target report detail endpoints for moderators to read why something was reported before deciding: `GET /admin/comments/:id/reports` and `GET /admin/offers/:id/reports`, each returning `{ id, reason, note, user, createdAt }` (cursor-paginated, newest first; the offer report `comment` text is surfaced as `note`); both guarded by `JwtAuthGuard + AdminGuard` and 404 on a missing target
 
 ### Security
 

@@ -82,6 +82,19 @@ type ThreadListBody = { items: ThreadItem[]; nextCursor: string | null };
 
 type OfferDetailBody = { id: string; commentCount: number };
 
+type ReportDetailBody = {
+  id: string;
+  reason: string;
+  note: string | null;
+  createdAt: string;
+  user: { id: string; username: string };
+};
+
+type ReportDetailListBody = {
+  items: ReportDetailBody[];
+  nextCursor: string | null;
+};
+
 function extractCookie(name: string, setCookieHeader: unknown): string {
   const cookies = Array.isArray(setCookieHeader)
     ? (setCookieHeader as string[])
@@ -706,6 +719,67 @@ describe('Moderation flow (e2e)', () => {
       expect((res.body as ErrorBody).key).toBe(
         'comment.invalid_status_transition',
       );
+    });
+  });
+
+  describe('Report details', () => {
+    it('lists a comment reports with reason, note and reporter', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const reporter = await registerUser('rep@example.com', 'rep');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments`)
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .send({ content: 'reported' });
+      const commentId = (created.body as { id: string }).id;
+      await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments/${commentId}/reports`)
+        .set('Authorization', `Bearer ${reporter.accessToken}`)
+        .send({ reason: 'ABUSE', note: 'insulting' });
+
+      const res = await request(app.getHttpServer())
+        .get(`/admin/comments/${commentId}/reports`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      const body = res.body as ReportDetailListBody;
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]).toMatchObject({
+        reason: 'ABUSE',
+        note: 'insulting',
+        user: { username: 'rep' },
+      });
+    });
+
+    it('lists an offer reports with the report text mapped to note', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const reporter = await registerUser('rep@example.com', 'rep');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/reports`)
+        .set('Authorization', `Bearer ${reporter.accessToken}`)
+        .send({ reason: 'SCAM', comment: 'fake deal' });
+
+      const res = await request(app.getHttpServer())
+        .get(`/admin/offers/${offer.id}/reports`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      const body = res.body as ReportDetailListBody;
+      expect(body.items[0]).toMatchObject({
+        reason: 'SCAM',
+        note: 'fake deal',
+        user: { username: 'rep' },
+      });
+    });
+
+    it('rejects listing reports of a missing comment with 404', async () => {
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const res = await request(app.getHttpServer())
+        .get('/admin/comments/00000000-0000-0000-0000-000000000000/reports')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(404);
+      expect((res.body as ErrorBody).key).toBe('comment.not_found');
     });
   });
 });
