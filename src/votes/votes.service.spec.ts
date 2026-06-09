@@ -48,6 +48,7 @@ type PrismaOfferMock = {
 
 type PrismaVoteMock = {
   findUnique: jest.Mock;
+  findMany: jest.Mock;
   create: jest.Mock;
   update: jest.Mock;
   delete: jest.Mock;
@@ -67,6 +68,7 @@ describe('VotesService', () => {
     offer = { findUnique: jest.fn(), update: jest.fn() };
     vote = {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -292,6 +294,71 @@ describe('VotesService', () => {
       await expect(
         service.findUserVote('user-1', 'offer-1'),
       ).resolves.toBeNull();
+    });
+  });
+
+  describe('findByUser', () => {
+    const offerSelect = {
+      offer: { select: { id: true, title: true, score: true } },
+    };
+
+    it('filters by user, skips deleted offers, and maps the offer context', async () => {
+      vote.findMany.mockResolvedValue([
+        {
+          ...buildVote({
+            type: VoteType.UP,
+            createdAt: new Date('2024-06-02T00:00:00Z'),
+          }),
+          offer: { id: 'offer-1', title: 'A deal', score: 3 },
+        },
+      ]);
+
+      const result = await service.findByUser('user-1', {});
+
+      expect(vote.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: 'user-1',
+          offer: { status: { not: OfferStatus.DELETED } },
+        },
+        include: offerSelect,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 21,
+      });
+      expect(result.items).toEqual([
+        {
+          type: VoteType.UP,
+          createdAt: new Date('2024-06-02T00:00:00Z'),
+          offer: { id: 'offer-1', title: 'A deal', score: 3 },
+        },
+      ]);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('returns a cursor when there are more results than the limit', async () => {
+      vote.findMany.mockResolvedValue([
+        {
+          ...buildVote({
+            id: 'vote-1',
+            createdAt: new Date('2024-06-02T00:00:00Z'),
+          }),
+          offer: { id: 'offer-1', title: 'A', score: 1 },
+        },
+        {
+          ...buildVote({
+            id: 'vote-2',
+            createdAt: new Date('2024-06-01T00:00:00Z'),
+          }),
+          offer: { id: 'offer-2', title: 'B', score: 1 },
+        },
+      ]);
+
+      const result = await service.findByUser('user-1', { limit: 1 });
+
+      expect(vote.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 2 }),
+      );
+      expect(result.items).toHaveLength(1);
+      expect(result.nextCursor).not.toBeNull();
     });
   });
 });

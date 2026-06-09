@@ -1,10 +1,19 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { OfferStatus, Vote, VoteType } from '@prisma/client';
+import { OfferStatus, Prisma, Vote, VoteType } from '@prisma/client';
 
 import { AppException } from '../common/exceptions/app.exception';
+import type { CursorPaginationQueryDto } from '../common/pagination/cursor-pagination-query.dto';
+import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
+import type { PaginatedResult } from '../common/pagination/paginated-result.type';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { PrismaService } from '../prisma/prisma.service';
+import type { MyVote } from './types/my-vote.type';
 import { VoteResponse } from './types/vote-response.type';
+
+type VoteCursor = {
+  createdAt: string;
+  id: string;
+};
 
 function voteWeight(type: VoteType): number {
   return type === VoteType.UP ? 1 : -1;
@@ -106,5 +115,56 @@ export class VotesService {
     return this.prisma.vote.findUnique({
       where: { userId_offerId: { userId, offerId } },
     });
+  }
+
+  // Offers a given user has voted on, most recent vote first. Votes on deleted
+  // offers are skipped since their target is no longer visible.
+  async findByUser(
+    userId: string,
+    query: CursorPaginationQueryDto,
+  ): Promise<PaginatedResult<MyVote>> {
+    const limit = query.limit ?? 20;
+    const where: Prisma.VoteWhereInput = {
+      userId,
+      offer: { status: { not: OfferStatus.DELETED } },
+    };
+
+    if (query.cursor) {
+      const cursor = decodeCursor<VoteCursor>(query.cursor);
+      where.AND = [
+        {
+          OR: [
+            { createdAt: { lt: new Date(cursor.createdAt) } },
+            { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } },
+          ],
+        },
+      ];
+    }
+
+    const items = await this.prisma.vote.findMany({
+      where,
+      include: { offer: { select: { id: true, title: true, score: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    const hasMore = items.length > limit;
+    const trimmed = hasMore ? items.slice(0, limit) : items;
+    const last = trimmed[trimmed.length - 1];
+
+    return {
+      items: trimmed.map((vote) => ({
+        type: vote.type,
+        createdAt: vote.createdAt,
+        offer: vote.offer,
+      })),
+      nextCursor:
+        hasMore && last
+          ? encodeCursor<VoteCursor>({
+              createdAt: last.createdAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
   }
 }
