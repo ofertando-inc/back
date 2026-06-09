@@ -17,13 +17,19 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 import type { PaginatedResult } from '../common/pagination/paginated-result.type';
 import type { PublicUser } from '../users/types/public-user.type';
+import { CommentReportsService } from './comment-reports.service';
 import { CommentVotesService } from './comment-votes.service';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { ListCommentsQueryDto } from './dto/list-comments-query.dto';
+import { ReportCommentDto } from './dto/report-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import { VoteCommentDto } from './dto/vote-comment.dto';
 import { CommentOwnerGuard } from './guards/comment-owner.guard';
+import type {
+  CommentReportResponse,
+  UserCommentReportResponse,
+} from './types/comment-report-response.type';
 import type { CommentResponse } from './types/comment-response.type';
 import type { CommentVoteResponse } from './types/comment-vote-response.type';
 
@@ -32,6 +38,7 @@ export class CommentsController {
   constructor(
     private readonly commentsService: CommentsService,
     private readonly commentVotesService: CommentVotesService,
+    private readonly commentReportsService: CommentReportsService,
   ) {}
 
   @UseGuards(OptionalJwtAuthGuard)
@@ -104,5 +111,29 @@ export class CommentsController {
     @CurrentUser() user: PublicUser,
   ): Promise<CommentVoteResponse> {
     return this.commentVotesService.withdraw(user.id, commentId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':commentId/reports')
+  report(
+    @Param('offerId') offerId: string,
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: PublicUser,
+    @Body() dto: ReportCommentDto,
+  ): Promise<CommentReportResponse> {
+    return this.commentReportsService.create(user.id, offerId, commentId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':commentId/reports/me')
+  async findMyReport(
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: PublicUser,
+  ): Promise<UserCommentReportResponse> {
+    const report = await this.commentReportsService.findUserReport(
+      user.id,
+      commentId,
+    );
+    return { reason: report?.reason ?? null };
   }
 }

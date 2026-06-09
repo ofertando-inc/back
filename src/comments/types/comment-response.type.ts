@@ -11,4 +11,5 @@ export type CommentResponse = {
   replyCount: number;
   userVote: VoteType | null;
   deleted: boolean;
+  hidden: boolean;
 };

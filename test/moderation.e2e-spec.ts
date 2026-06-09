@@ -1,6 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { OfferStatus, ReportReason, UserRole } from '@prisma/client';
+import {
+  OfferStatus,
+  ReportReason,
+  ReportStatus,
+  UserRole,
+} from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -55,6 +60,89 @@ type OfferListBody = {
 };
 
 type ErrorBody = { key: string; statusCode: number };
+
+type CommentModerationBody = {
+  id: string;
+  content: string;
+  reportCount: number;
+  hiddenAt: string | null;
+  createdAt: string;
+  user: { id: string; username: string };
+  offer: { id: string; title: string };
+};
+
+type CommentModerationListBody = {
+  items: CommentModerationBody[];
+  nextCursor: string | null;
+};
+
+type ThreadItem = {
+  id: string;
+  content: string | null;
+  hidden: boolean;
+  deleted: boolean;
+};
+
+type ThreadListBody = { items: ThreadItem[]; nextCursor: string | null };
+
+type OfferDetailBody = { id: string; commentCount: number };
+
+type ReportDetailBody = {
+  id: string;
+  reason: string;
+  note: string | null;
+  status: string;
+  createdAt: string;
+  user: { id: string; username: string };
+};
+
+type ReportDetailListBody = {
+  items: ReportDetailBody[];
+  nextCursor: string | null;
+};
+
+type ModerationLogEntryBody = {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  reason: string | null;
+  note: string | null;
+  createdAt: string;
+  actor: { id: string; username: string };
+};
+
+type ModerationLogListBody = {
+  items: ModerationLogEntryBody[];
+  nextCursor: string | null;
+};
+
+type ModerationSummaryBody = {
+  pendingComments: number;
+  pendingOfferReports: number;
+};
+
+type AdminUserBody = {
+  id: string;
+  email: string;
+  username: string;
+  role: string;
+  status: string;
+};
+
+type AdminUserListBody = {
+  items: AdminUserBody[];
+  nextCursor: string | null;
+};
+
+type AdminUserDetailBody = AdminUserBody & {
+  counts: { offers: number; comments: number };
+  moderationHistory: {
+    action: string;
+    reason: string | null;
+    actor: { username: string };
+  }[];
+};
 
 function extractCookie(name: string, setCookieHeader: unknown): string {
   const cookies = Array.isArray(setCookieHeader)
@@ -307,7 +395,7 @@ describe('Moderation flow (e2e)', () => {
       expect(body.key).toBe('offer.invalid_status_transition');
     });
 
-    it('purges reports on restore so the same reporters can report again and re-trigger REPORTED', async () => {
+    it('dismiss keeps reports as history and the same reporters re-trigger REPORTED via re-open', async () => {
       // REPORT_THRESHOLD is 3 in the test environment
       const author = await registerUser('author@example.com', 'author');
       const admin = await registerAdmin('admin@example.com', 'admin');
@@ -328,23 +416,25 @@ describe('Moderation flow (e2e)', () => {
       const firstTrigger = await report(r3.accessToken);
       expect((firstTrigger.body as { status: string }).status).toBe('REPORTED');
 
-      // Admin reviews: disable then restore
-      await request(app.getHttpServer())
-        .patch(`/admin/offers/${offer.id}/disable`)
-        .set('Authorization', `Bearer ${admin.accessToken}`)
-        .expect(200);
-      await request(app.getHttpServer())
-        .patch(`/admin/offers/${offer.id}/restore`)
-        .set('Authorization', `Bearer ${admin.accessToken}`)
-        .expect(200);
+      // Admin dismisses: offer back to ACTIVE, reportCount cleared
+      const dismissed = await request(app.getHttpServer())
+        .patch(`/admin/offers/${offer.id}/dismiss`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(dismissed.status).toBe(200);
+      expect((dismissed.body as OfferBody).status).toBe('ACTIVE');
+      expect((dismissed.body as OfferBody).reportCount).toBe(0);
 
-      // Reports must be purged
+      // Reports are kept as history (DISMISSED), not purged
       const remaining = await prisma.report.count({
         where: { offerId: offer.id },
       });
-      expect(remaining).toBe(0);
+      expect(remaining).toBe(3);
+      const pending = await prisma.report.count({
+        where: { offerId: offer.id, status: ReportStatus.PENDING },
+      });
+      expect(pending).toBe(0);
 
-      // Second round: the SAME reporters can report again and re-trigger REPORTED
+      // Second round: the SAME reporters re-report -> reports re-open -> REPORTED
       const r1Again = await report(r1.accessToken);
       expect(r1Again.status).toBe(201);
       await report(r2.accessToken);
@@ -494,6 +584,453 @@ describe('Moderation flow (e2e)', () => {
 
       expect(res.status).toBe(400);
       expect(body.key).toBe('user.invalid_status_transition');
+    });
+  });
+
+  describe('Comment moderation', () => {
+    function postComment(
+      token: string,
+      offerId: string,
+      content: string,
+      parentId?: string,
+    ) {
+      return request(app.getHttpServer())
+        .post(`/offers/${offerId}/comments`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ content, parentId });
+    }
+
+    function reportComment(
+      token: string,
+      offerId: string,
+      commentId: string,
+      reason = 'SPAM',
+    ) {
+      return request(app.getHttpServer())
+        .post(`/offers/${offerId}/comments/${commentId}/reports`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ reason });
+    }
+
+    // COMMENT_REPORT_THRESHOLD is 2 in tests: two distinct reporters flag it.
+    async function flagComment(offerId: string, commentId: string) {
+      const r1 = await registerUser('rep1@example.com', 'rep1');
+      const r2 = await registerUser('rep2@example.com', 'rep2');
+      await reportComment(r1.accessToken, offerId, commentId);
+      await reportComment(r2.accessToken, offerId, commentId);
+    }
+
+    describe('Authorization', () => {
+      it('rejects /admin/comments without authentication with 401', async () => {
+        const res = await request(app.getHttpServer()).get('/admin/comments');
+        expect(res.status).toBe(401);
+      });
+
+      it('rejects /admin/comments as a regular USER with 403', async () => {
+        const user = await registerUser('user@example.com', 'user');
+        const res = await request(app.getHttpServer())
+          .get('/admin/comments')
+          .set('Authorization', `Bearer ${user.accessToken}`);
+        expect(res.status).toBe(403);
+        expect((res.body as ErrorBody).key).toBe('auth.forbidden');
+      });
+
+      it('allows /admin/comments as ADMIN', async () => {
+        const admin = await registerAdmin('admin@example.com', 'admin');
+        const res = await request(app.getHttpServer())
+          .get('/admin/comments')
+          .set('Authorization', `Bearer ${admin.accessToken}`);
+        expect(res.status).toBe(200);
+      });
+    });
+
+    it('lists comments that crossed the report threshold', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'spam!');
+      const commentId = (created.body as { id: string }).id;
+
+      await flagComment(offer.id, commentId);
+
+      const queue = await request(app.getHttpServer())
+        .get('/admin/comments')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      const body = queue.body as CommentModerationListBody;
+
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]).toMatchObject({
+        id: commentId,
+        reportCount: 2,
+        content: 'spam!',
+        user: { username: 'author' },
+        offer: { id: offer.id },
+      });
+    });
+
+    it('hides a reported comment: masked in the thread, dropped from the queue, commentCount adjusted', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const root = await postComment(author.accessToken, offer.id, 'bad root');
+      const rootId = (root.body as { id: string }).id;
+      // a reply keeps the thread alive so the hidden root shows as a tombstone
+      await postComment(author.accessToken, offer.id, 'a reply', rootId);
+      await flagComment(offer.id, rootId);
+
+      const hidden = await request(app.getHttpServer())
+        .patch(`/admin/comments/${rootId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(hidden.status).toBe(200);
+      expect((hidden.body as CommentModerationBody).hiddenAt).not.toBeNull();
+
+      // masked (content null, hidden flag) in the public thread
+      const thread = await request(app.getHttpServer()).get(
+        `/offers/${offer.id}/comments`,
+      );
+      const root2 = (thread.body as ThreadListBody).items.find(
+        (c) => c.id === rootId,
+      );
+      expect(root2?.content).toBeNull();
+      expect(root2?.hidden).toBe(true);
+
+      // gone from the moderation queue
+      const queue = await request(app.getHttpServer())
+        .get('/admin/comments')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect((queue.body as CommentModerationListBody).items).toHaveLength(0);
+
+      // commentCount dropped (root no longer counted, reply still counts)
+      const detail = await request(app.getHttpServer()).get(
+        `/offers/${offer.id}`,
+      );
+      expect((detail.body as OfferDetailBody).commentCount).toBe(1);
+    });
+
+    it('restores a hidden comment: visible again and reports purged', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'oops');
+      const commentId = (created.body as { id: string }).id;
+      await flagComment(offer.id, commentId);
+      await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      const restored = await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/restore`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(restored.status).toBe(200);
+      expect((restored.body as CommentModerationBody).hiddenAt).toBeNull();
+      expect((restored.body as CommentModerationBody).reportCount).toBe(0);
+
+      // visible again with its content in the thread
+      const thread = await request(app.getHttpServer()).get(
+        `/offers/${offer.id}/comments`,
+      );
+      const item = (thread.body as ThreadListBody).items.find(
+        (c) => c.id === commentId,
+      );
+      expect(item?.content).toBe('oops');
+      expect(item?.hidden).toBe(false);
+    });
+
+    it('rejects reporting a moderator-hidden comment with comment.not_reportable', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'gone');
+      const commentId = (created.body as { id: string }).id;
+      await flagComment(offer.id, commentId);
+      await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      const later = await registerUser('late@example.com', 'late');
+      const res = await reportComment(later.accessToken, offer.id, commentId);
+      expect(res.status).toBe(400);
+      expect((res.body as ErrorBody).key).toBe('comment.not_reportable');
+    });
+
+    it('rejects hiding an already hidden comment with comment.invalid_status_transition', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'x');
+      const commentId = (created.body as { id: string }).id;
+      await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+
+      const res = await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(400);
+      expect((res.body as ErrorBody).key).toBe(
+        'comment.invalid_status_transition',
+      );
+    });
+
+    it('dismisses a reported comment: drops from the queue, stays visible, reports kept as DISMISSED', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await postComment(author.accessToken, offer.id, 'fine');
+      const commentId = (created.body as { id: string }).id;
+      await flagComment(offer.id, commentId);
+
+      const dismissed = await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/dismiss`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(dismissed.status).toBe(200);
+
+      // dropped from the moderation queue
+      const queue = await request(app.getHttpServer())
+        .get('/admin/comments')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect((queue.body as CommentModerationListBody).items).toHaveLength(0);
+
+      // still visible with its content in the thread
+      const thread = await request(app.getHttpServer()).get(
+        `/offers/${offer.id}/comments`,
+      );
+      const item = (thread.body as ThreadListBody).items.find(
+        (c) => c.id === commentId,
+      );
+      expect(item?.content).toBe('fine');
+      expect(item?.hidden).toBe(false);
+
+      // reports are kept as history, marked DISMISSED
+      const reports = await request(app.getHttpServer())
+        .get(`/admin/comments/${commentId}/reports`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      const reportItems = (reports.body as ReportDetailListBody).items;
+      expect(reportItems).toHaveLength(2);
+      expect(reportItems.every((r) => r.status === 'DISMISSED')).toBe(true);
+    });
+  });
+
+  describe('Report details', () => {
+    it('lists a comment reports with reason, note and reporter', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const reporter = await registerUser('rep@example.com', 'rep');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments`)
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .send({ content: 'reported' });
+      const commentId = (created.body as { id: string }).id;
+      await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments/${commentId}/reports`)
+        .set('Authorization', `Bearer ${reporter.accessToken}`)
+        .send({ reason: 'ABUSE', note: 'insulting' });
+
+      const res = await request(app.getHttpServer())
+        .get(`/admin/comments/${commentId}/reports`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      const body = res.body as ReportDetailListBody;
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0]).toMatchObject({
+        reason: 'ABUSE',
+        note: 'insulting',
+        user: { username: 'rep' },
+      });
+    });
+
+    it('lists an offer reports with the report text mapped to note', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const reporter = await registerUser('rep@example.com', 'rep');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/reports`)
+        .set('Authorization', `Bearer ${reporter.accessToken}`)
+        .send({ reason: 'SCAM', comment: 'fake deal' });
+
+      const res = await request(app.getHttpServer())
+        .get(`/admin/offers/${offer.id}/reports`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      const body = res.body as ReportDetailListBody;
+      expect(body.items[0]).toMatchObject({
+        reason: 'SCAM',
+        note: 'fake deal',
+        user: { username: 'rep' },
+      });
+    });
+
+    it('rejects listing reports of a missing comment with 404', async () => {
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const res = await request(app.getHttpServer())
+        .get('/admin/comments/00000000-0000-0000-0000-000000000000/reports')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(404);
+      expect((res.body as ErrorBody).key).toBe('comment.not_found');
+    });
+  });
+
+  describe('Moderation log', () => {
+    it('rejects /admin/moderation/log as a regular USER with 403', async () => {
+      const user = await registerUser('user@example.com', 'user');
+      const res = await request(app.getHttpServer())
+        .get('/admin/moderation/log')
+        .set('Authorization', `Bearer ${user.accessToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('records a moderation decision with its actor, action and reason', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+      const created = await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments`)
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .send({ content: 'bad comment' });
+      const commentId = (created.body as { id: string }).id;
+
+      await request(app.getHttpServer())
+        .patch(`/admin/comments/${commentId}/hide`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ reason: 'spam', note: 'obvious ad' })
+        .expect(200);
+
+      const log = await request(app.getHttpServer())
+        .get('/admin/moderation/log')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(log.status).toBe(200);
+
+      const entry = (log.body as ModerationLogListBody).items.find(
+        (e) => e.targetId === commentId,
+      );
+      expect(entry).toMatchObject({
+        action: 'HIDE_COMMENT',
+        targetType: 'COMMENT',
+        targetId: commentId,
+        reason: 'spam',
+        note: 'obvious ad',
+        actor: { username: 'admin' },
+      });
+    });
+  });
+
+  describe('Moderation summary', () => {
+    it('rejects /admin/moderation/summary as a regular USER with 403', async () => {
+      const user = await registerUser('user@example.com', 'user');
+      const res = await request(app.getHttpServer())
+        .get('/admin/moderation/summary')
+        .set('Authorization', `Bearer ${user.accessToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('counts the pending comment queue and pending offer reports', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const offer = await createOfferAs(author.accessToken);
+
+      // a reported comment that crossed COMMENT_REPORT_THRESHOLD (2)
+      const created = await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments`)
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .send({ content: 'reported' });
+      const commentId = (created.body as { id: string }).id;
+      const c1 = await registerUser('c1@example.com', 'c1');
+      const c2 = await registerUser('c2@example.com', 'c2');
+      for (const u of [c1, c2]) {
+        await request(app.getHttpServer())
+          .post(`/offers/${offer.id}/comments/${commentId}/reports`)
+          .set('Authorization', `Bearer ${u.accessToken}`)
+          .send({ reason: 'SPAM' });
+      }
+
+      // three pending reports on the offer (REPORT_THRESHOLD is 3)
+      const o1 = await registerUser('o1@example.com', 'o1');
+      const o2 = await registerUser('o2@example.com', 'o2');
+      const o3 = await registerUser('o3@example.com', 'o3');
+      for (const u of [o1, o2, o3]) {
+        await request(app.getHttpServer())
+          .post(`/offers/${offer.id}/reports`)
+          .set('Authorization', `Bearer ${u.accessToken}`)
+          .send({ reason: ReportReason.SCAM });
+      }
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/moderation/summary')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      expect(res.body as ModerationSummaryBody).toEqual({
+        pendingComments: 1,
+        pendingOfferReports: 3,
+      });
+    });
+  });
+
+  describe('Admin users', () => {
+    it('rejects /admin/users as a regular USER with 403', async () => {
+      const user = await registerUser('user@example.com', 'user');
+      const res = await request(app.getHttpServer())
+        .get('/admin/users')
+        .set('Authorization', `Bearer ${user.accessToken}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('searches users by username', async () => {
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      await registerUser('alice@example.com', 'alice');
+      await registerUser('bob@example.com', 'bob');
+
+      const res = await request(app.getHttpServer())
+        .get('/admin/users?search=alic')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      const items = (res.body as AdminUserListBody).items;
+      expect(items).toHaveLength(1);
+      expect(items[0].username).toBe('alice');
+    });
+
+    it('returns a user detail with content counts and moderation history', async () => {
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const target = await registerUser('target@example.com', 'target');
+      const offer = await createOfferAs(target.accessToken);
+      await request(app.getHttpServer())
+        .post(`/offers/${offer.id}/comments`)
+        .set('Authorization', `Bearer ${target.accessToken}`)
+        .send({ content: 'a comment' });
+
+      // a sanction is recorded in the moderation log
+      await request(app.getHttpServer())
+        .patch(`/admin/users/${target.user.id}/disable`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ reason: 'repeated abuse' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .get(`/admin/users/${target.user.id}`)
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(200);
+      const body = res.body as AdminUserDetailBody;
+      expect(body).toMatchObject({
+        id: target.user.id,
+        username: 'target',
+        status: 'DISABLED',
+        counts: { offers: 1, comments: 1 },
+      });
+      expect(body.moderationHistory[0]).toMatchObject({
+        action: 'DISABLE_USER',
+        reason: 'repeated abuse',
+        actor: { username: 'admin' },
+      });
+    });
+
+    it('returns 404 user.not_found for an unknown user', async () => {
+      const admin = await registerAdmin('admin@example.com', 'admin');
+      const res = await request(app.getHttpServer())
+        .get('/admin/users/00000000-0000-0000-0000-000000000000')
+        .set('Authorization', `Bearer ${admin.accessToken}`);
+      expect(res.status).toBe(404);
+      expect((res.body as ErrorBody).key).toBe('user.not_found');
     });
   });
 });

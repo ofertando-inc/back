@@ -21,6 +21,8 @@ export const ErrorKey = {
   CommentNotFound: 'comment.not_found',
   CommentForbidden: 'comment.forbidden',
   CommentOfferNotCommentable: 'comment.offer_not_commentable',
+  CommentNotReportable: 'comment.not_reportable',
+  CommentInvalidStatusTransition: 'comment.invalid_status_transition',
 
   PaginationInvalidCursor: 'pagination.invalid_cursor',
 

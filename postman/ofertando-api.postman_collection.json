@@ -890,6 +890,20 @@
           "response": []
         },
         {
+          "name": "Dismiss offer reports",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/offers/{{offerId}}/dismiss",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "offers", "{{offerId}}", "dismiss"]
+            },
+            "description": "Admin only. The reports are unfounded: marks them DISMISSED (kept as history), resets reportCount and returns a REPORTED offer to ACTIVE. Rejected with offer.invalid_status_transition if there is nothing to dismiss."
+          },
+          "response": []
+        },
+        {
           "name": "List reports",
           "request": {
             "method": "GET",
@@ -914,7 +928,55 @@
                   "disabled": true
                 }
               ]
+            },
+            "description": "Admin only. Offer report moderation queue: only PENDING reports (resolved/dismissed ones drop out). Resolution is per-offer via disable or dismiss."
+          },
+          "response": []
+        },
+        {
+          "name": "List/search users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.items && body.items.length) {",
+                  "  pm.environment.set('userId', body.items[0].id);",
+                  "}"
+                ]
+              }
             }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users?search=&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users"],
+              "query": [
+                { "key": "search", "value": "" },
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Lists/searches users (PublicUser), cursor-paginated. search matches username or email (case-insensitive). Captures the first userId."
+          },
+          "response": []
+        },
+        {
+          "name": "User detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users", "{{userId}}"]
+            },
+            "description": "Admin only. Returns the user (PublicUser) plus counts { offers, comments } and the recent moderationHistory (sanctions on this user, from the log). 404 user.not_found if unknown."
           },
           "response": []
         },
@@ -990,6 +1052,152 @@
                 "restore"
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "List reported comments",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.items && body.items.length) {",
+                  "  pm.environment.set('commentId', body.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Moderation queue: live, non-hidden comments whose reportCount reached COMMENT_REPORT_THRESHOLD, most-reported first. Captures the first commentId."
+          },
+          "response": []
+        },
+        {
+          "name": "Hide comment",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"spam\",\n  \"note\": \"obvious ad\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments/{{commentId}}/hide",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments", "{{commentId}}", "hide"]
+            },
+            "description": "Admin only. Hides the comment (sets hiddenAt): masked in the thread and removed from the commentCount. Body { reason?, note? } is optional and recorded in the moderation log. Rejected with comment.invalid_status_transition if already hidden."
+          },
+          "response": []
+        },
+        {
+          "name": "Dismiss comment",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments/{{commentId}}/dismiss",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments", "{{commentId}}", "dismiss"]
+            },
+            "description": "Admin only. The reports are unfounded: marks them DISMISSED (kept as history), resets reportCount, keeps the comment visible. Rejected with comment.invalid_status_transition if hidden or unreported."
+          },
+          "response": []
+        },
+        {
+          "name": "Restore comment",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments/{{commentId}}/restore",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments", "{{commentId}}", "restore"]
+            },
+            "description": "Admin only. Un-hides a moderator-hidden comment (clears hiddenAt) and brings it back into the counts. Reports are kept as history. Rejected with comment.invalid_status_transition if the comment is not hidden."
+          },
+          "response": []
+        },
+        {
+          "name": "List comment reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/comments/{{commentId}}/reports?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "comments", "{{commentId}}", "reports"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Lists the reports on a comment: { id, reason, note, user{id,username}, createdAt }, newest first. Context to read before deciding hide/dismiss/restore."
+          },
+          "response": []
+        },
+        {
+          "name": "List offer reports",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/offers/{{offerId}}/reports?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "offers", "{{offerId}}", "reports"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Lists the reports on an offer: { id, reason, note, user{id,username}, createdAt }, newest first. note maps the legacy report `comment` text field."
+          },
+          "response": []
+        },
+        {
+          "name": "Moderation summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/moderation/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "moderation", "summary"]
+            },
+            "description": "Admin only. Dashboard counters for nav badges: { pendingComments, pendingOfferReports } — sizes of the comment moderation queue and the pending offer reports."
+          },
+          "response": []
+        },
+        {
+          "name": "Moderation log",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/moderation/log?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "moderation", "log"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Audit trail of moderation decisions: { id, action, targetType, targetId, reason, note, createdAt, actor{id,username} }, newest first. Every hide/dismiss/restore/disable records an entry with the acting admin and the optional reason/note."
           },
           "response": []
         }
@@ -1244,6 +1452,51 @@
               "path": ["offers", "{{offerId}}", "comments", "{{commentId}}"]
             },
             "description": "Author or admin. Soft-delete; cascades to replies when the comment is top-level."
+          },
+          "response": []
+        },
+        {
+          "name": "Report comment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"SPAM\",\n  \"note\": \"looks like an ad\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}/reports",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "comments",
+                "{{commentId}}",
+                "reports"
+              ]
+            },
+            "description": "Report a comment. reason is one of SPAM, ABUSE, OFF_TOPIC, MISINFORMATION, OTHER; note is optional. One report per user/comment (idempotent). Returns { reportCount }. Rejected with comment.not_reportable if the comment was hidden by a moderator."
+          },
+          "response": []
+        },
+        {
+          "name": "My comment report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/comments/{{commentId}}/reports/me",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "offers",
+                "{{offerId}}",
+                "comments",
+                "{{commentId}}",
+                "reports",
+                "me"
+              ]
+            },
+            "description": "Returns the current user's report reason for this comment, or null."
           },
           "response": []
         }

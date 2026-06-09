@@ -37,6 +37,37 @@ enum ReportReason {
   OTHER
 }
 
+enum CommentReportReason {
+  SPAM
+  ABUSE
+  OFF_TOPIC
+  MISINFORMATION
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+enum ModerationAction {
+  HIDE_COMMENT
+  DISMISS_COMMENT
+  RESTORE_COMMENT
+  DISABLE_OFFER
+  DISMISS_OFFER
+  RESTORE_OFFER
+  DISABLE_USER
+  RESTORE_USER
+}
+
+enum ModerationTargetType {
+  COMMENT
+  OFFER
+  USER
+}
+
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
@@ -47,12 +78,14 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  offers        Offer[]
-  votes         Vote[]
-  reports       Report[]
-  refreshTokens RefreshToken[]
-  comments      Comment[]
-  commentVotes  CommentVote[]
+  offers           Offer[]
+  votes            Vote[]
+  reports          Report[]
+  refreshTokens    RefreshToken[]
+  comments         Comment[]
+  commentVotes     CommentVote[]
+  commentReports   CommentReport[]
+  moderationLogs   ModerationLog[] @relation("ModerationActor")
 
   @@map("users")
 }
@@ -122,10 +155,12 @@ model Vote {
 }
 
 model Report {
-  id        String       @id @default(uuid())
-  reason    ReportReason
-  comment   String?
-  createdAt DateTime     @default(now())
+  id         String       @id @default(uuid())
+  reason     ReportReason
+  comment    String?
+  status     ReportStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
+  resolvedAt DateTime?
 
   userId  String
   offerId String
@@ -142,26 +177,64 @@ model Comment {
   content    String
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
-  editedAt   DateTime?
-  deletedAt  DateTime?
-  score      Int       @default(0)
-  replyCount Int       @default(0)
+  editedAt    DateTime?
+  deletedAt   DateTime?
+  hiddenAt    DateTime?
+  score       Int       @default(0)
+  replyCount  Int       @default(0)
+  reportCount Int       @default(0)
 
   userId    String
   offerId   String
   parentId  String?
   replyToId String?
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  offer     Offer         @relation(fields: [offerId], references: [id], onDelete: Cascade)
-  parent    Comment?      @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   Comment[]     @relation("CommentThread")
-  replyTo   Comment?      @relation("CommentReplyTo", fields: [replyToId], references: [id], onDelete: SetNull)
-  repliedBy Comment[]     @relation("CommentReplyTo")
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  offer     Offer           @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  parent    Comment?        @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[]       @relation("CommentThread")
+  replyTo   Comment?        @relation("CommentReplyTo", fields: [replyToId], references: [id], onDelete: SetNull)
+  repliedBy Comment[]       @relation("CommentReplyTo")
   votes     CommentVote[]
+  reports   CommentReport[]
 
   @@index([offerId])
   @@index([parentId])
   @@map("comments")
+}
+
+model CommentReport {
+  id         String              @id @default(uuid())
+  reason     CommentReportReason
+  note       String?
+  status     ReportStatus        @default(PENDING)
+  createdAt  DateTime            @default(now())
+  resolvedAt DateTime?
+
+  userId    String
+  commentId String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, commentId])
+  @@index([commentId])
+  @@map("comment_reports")
+}
+
+model ModerationLog {
+  id         String               @id @default(uuid())
+  action     ModerationAction
+  targetType ModerationTargetType
+  targetId   String
+  reason     String?
+  note       String?
+  createdAt  DateTime             @default(now())
+
+  actorId String
+  actor   User   @relation("ModerationActor", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([targetType, targetId])
+  @@map("moderation_logs")
 }
 
 model CommentVote {

@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OfferStatus, Report } from '@prisma/client';
+import { OfferStatus, Report, ReportStatus } from '@prisma/client';
 
 import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
@@ -45,18 +45,33 @@ export class ReportsService {
         where: { userId_offerId: { userId, offerId } },
       });
 
-      if (existing) {
+      // A still-open report from this user is a no-op (one report per cycle).
+      if (existing && existing.status === ReportStatus.PENDING) {
         return { status: offer.status };
       }
 
-      await tx.report.create({
-        data: {
-          userId,
-          offerId,
-          reason: dto.reason,
-          comment: dto.comment ?? null,
-        },
-      });
+      if (existing) {
+        // The user's previous report was resolved/dismissed: re-open it so the
+        // count can climb again and the offer can re-trigger REPORTED.
+        await tx.report.update({
+          where: { id: existing.id },
+          data: {
+            status: ReportStatus.PENDING,
+            resolvedAt: null,
+            reason: dto.reason,
+            comment: dto.comment ?? null,
+          },
+        });
+      } else {
+        await tx.report.create({
+          data: {
+            userId,
+            offerId,
+            reason: dto.reason,
+            comment: dto.comment ?? null,
+          },
+        });
+      }
 
       const incremented = await tx.offer.update({
         where: { id: offerId },

@@ -22,6 +22,12 @@ const COMMENT_INCLUDE = {
   votes: { select: { type: true } },
 } satisfies Prisma.CommentInclude;
 
+// A comment that is visible normally: neither author-deleted nor moderator-hidden.
+const LIVE_COMMENT = {
+  deletedAt: null,
+  hiddenAt: null,
+} satisfies Prisma.CommentWhereInput;
+
 type CommentWithRelations = Prisma.CommentGetPayload<{
   include: typeof COMMENT_INCLUDE;
 }>;
@@ -181,20 +187,21 @@ export class CommentsService {
         ? {
             offerId: scope.offerId,
             parentId: null,
-            // Live top-level comments, plus tombstones (deleted comments that
-            // still have at least one live reply).
+            // Live top-level comments, plus tombstones: comments removed by
+            // their author (deletedAt) or by a moderator (hiddenAt) that still
+            // have at least one live reply, so the thread is preserved.
             OR: [
-              { deletedAt: null },
+              LIVE_COMMENT,
               {
-                deletedAt: { not: null },
-                replies: { some: { deletedAt: null } },
+                OR: [{ deletedAt: { not: null } }, { hiddenAt: { not: null } }],
+                replies: { some: LIVE_COMMENT },
               },
             ],
           }
         : {
             offerId: scope.offerId,
             parentId: scope.parentId,
-            deletedAt: null,
+            ...LIVE_COMMENT,
           };
 
     if (query.cursor) {
@@ -245,9 +252,13 @@ export class CommentsService {
 
   private toResponse(comment: CommentWithRelations): CommentResponse {
     const deleted = comment.deletedAt !== null;
+    const hidden = comment.hiddenAt !== null;
+    // Content is masked whether the comment was removed by its author or hidden
+    // by a moderator; the client distinguishes the two via the flags below.
+    const removed = deleted || hidden;
     return {
       id: comment.id,
-      content: deleted ? null : comment.content,
+      content: removed ? null : comment.content,
       createdAt: comment.createdAt,
       editedAt: comment.editedAt,
       user: comment.user,
@@ -258,6 +269,7 @@ export class CommentsService {
       replyCount: comment.replyCount,
       userVote: comment.votes?.[0]?.type ?? null,
       deleted,
+      hidden,
     };
   }
 }
