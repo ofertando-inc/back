@@ -577,4 +577,48 @@ describe('Offers flow (e2e)', () => {
       expect(body.items.every((o) => o.userVote === null)).toBe(true);
     });
   });
+
+  describe('GET /offers/facets', () => {
+    it('returns cities, stores and category counts over visible offers', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const cats = (await request(app.getHttpServer()).get('/categories'))
+        .body as { id: string; slug: string }[];
+      const tech = cats.find((c) => c.slug === 'technology')!;
+      const home = cats.find((c) => c.slug === 'home')!;
+
+      await createOfferAs(author.accessToken, {
+        city: 'Bogotá',
+        storeName: 'Acme',
+        categoryIds: [tech.id],
+      });
+      await createOfferAs(author.accessToken, {
+        city: 'Bogotá',
+        storeName: 'Globex',
+        categoryIds: [tech.id, home.id],
+      });
+
+      const res = await request(app.getHttpServer()).get('/offers/facets');
+      expect(res.status).toBe(200);
+      const body = res.body as {
+        cities: { value: string; count: number }[];
+        stores: { value: string; count: number }[];
+        categories: { slug: string; name: string; count: number }[];
+      };
+
+      expect(body.cities).toContainEqual({ value: 'Bogotá', count: 2 });
+      expect(body.stores).toEqual(
+        expect.arrayContaining([
+          { value: 'Acme', count: 1 },
+          { value: 'Globex', count: 1 },
+        ]),
+      );
+      expect(body.categories.find((c) => c.slug === 'technology')).toEqual({
+        slug: 'technology',
+        name: 'Technology',
+        count: 2,
+      });
+      expect(body.categories.find((c) => c.slug === 'home')?.count).toBe(1);
+      expect(body.categories.find((c) => c.slug === 'travel')?.count).toBe(0);
+    });
+  });
 });

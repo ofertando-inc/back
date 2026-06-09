@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added offer categories: a `Category` model (`id`, `slug`, `name`, `order`) seeded with a fixed English-slug set (`technology`, `home`, `fashion`, `groceries`, `restaurants`, `travel`, `entertainment`, `beauty`, `sports`, `kids`, `services`, `other`), a many-to-many `Offer.categories` relation, and the migration (existing offers backfilled to `other`). Slugs are the stable join key the front maps to localized labels/icons
 - Added `GET /categories` (public) returning `[{ id, slug, name, order }]` for the category nav, filters and the offer-creation select
 - `CreateOfferDto` now requires `categoryIds` (≥1, validated against existing categories — `offer.invalid_category` otherwise); `UpdateOfferDto` can replace the set; `OfferResponse` embeds `categories: [{ id, slug, name }]`; and `GET /offers?category=<slug>` filters offers that have the given category
+- Added `GET /offers/facets` (public) returning data-driven filter values over the publicly listable offers (ACTIVE + EXPIRED): `{ cities: [{ value, count }], stores: [{ value, count }], categories: [{ slug, name, count }] }`
 
 ## [0.9.0] - 2026-06-09
 
