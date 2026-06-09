@@ -17,7 +17,7 @@ import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
-import type { PaginatedResult } from '../common/pagination/paginated-result.type';
+import type { CountedPaginatedResult } from '../common/pagination/paginated-result.type';
 import type { PublicUser } from '../users/types/public-user.type';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { ListOffersQueryDto } from './dto/list-offers-query.dto';
@@ -35,7 +35,7 @@ export class OffersController {
   list(
     @Query() query: ListOffersQueryDto,
     @CurrentUser() user?: PublicUser,
-  ): Promise<PaginatedResult<OfferResponse>> {
+  ): Promise<CountedPaginatedResult<OfferResponse>> {
     return this.offersService.findAll(query, { viewerId: user?.id });
   }
 
@@ -44,7 +44,7 @@ export class OffersController {
   listMine(
     @CurrentUser() user: PublicUser,
     @Query() query: ListOffersQueryDto,
-  ): Promise<PaginatedResult<OfferResponse>> {
+  ): Promise<CountedPaginatedResult<OfferResponse>> {
     return this.offersService.findAll(query, {
       ownerId: user.id,
       viewerId: user.id,

@@ -207,7 +207,7 @@ describe('ModerationService', () => {
   describe('listOffers', () => {
     it('delegates to OffersService.findAll with admin: true', async () => {
       const query = { limit: 20 } as ListOffersQueryDto;
-      const expected = { items: [], nextCursor: null };
+      const expected = { items: [], nextCursor: null, total: 0 };
       offersService.findAll.mockResolvedValue(expected);
 
       const result = await service.listOffers(query, 'admin-1');

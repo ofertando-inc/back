@@ -73,6 +73,7 @@ type PrismaOfferMock = {
   findUnique: jest.Mock;
   findMany: jest.Mock;
   update: jest.Mock;
+  count: jest.Mock;
 };
 
 describe('OffersService', () => {
@@ -86,6 +87,7 @@ describe('OffersService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -93,7 +95,12 @@ describe('OffersService', () => {
         OffersService,
         {
           provide: PrismaService,
-          useValue: { offer: prismaOffer },
+          useValue: {
+            offer: prismaOffer,
+            $transaction: jest.fn((ops: Promise<unknown>[]) =>
+              Promise.all(ops),
+            ),
+          },
         },
       ],
     }).compile();
@@ -592,6 +599,63 @@ describe('OffersService', () => {
 
       const decoded = decodeCursor<DateCursor>(result.nextCursor as string);
       expect(decoded.id).toBe('offer-2');
+    });
+
+    it('applies a free-text search over title, description and store', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({ q: 'sony' } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ where: { OR: unknown[] } }>(
+        prismaOffer.findMany,
+      );
+      expect(call.where.OR).toEqual([
+        { title: { contains: 'sony', mode: 'insensitive' } },
+        { description: { contains: 'sony', mode: 'insensitive' } },
+        { storeName: { contains: 'sony', mode: 'insensitive' } },
+      ]);
+    });
+
+    it('filters by store name', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({ store: 'Carrefour' } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ where: { storeName: string } }>(
+        prismaOffer.findMany,
+      );
+      expect(call.where.storeName).toBe('Carrefour');
+    });
+
+    it('hides expired offers from the public list when includeExpired=false', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({ includeExpired: false } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ where: { status: unknown } }>(
+        prismaOffer.findMany,
+      );
+      expect(call.where.status).toBe(OfferStatus.ACTIVE);
+    });
+
+    it('orders by soonest-ending with sort=ending', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({
+        sort: OfferSortMode.Ending,
+      } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ orderBy: unknown }>(prismaOffer.findMany);
+      expect(call.orderBy).toEqual([{ endDate: 'asc' }, { id: 'asc' }]);
+    });
+
+    it('returns the total count of matching offers', async () => {
+      prismaOffer.findMany.mockResolvedValue([buildOfferWithRelations()]);
+      prismaOffer.count.mockResolvedValue(42);
+
+      const result = await service.findAll({} as ListOffersQueryDto);
+
+      expect(result.total).toBe(42);
     });
   });
 });

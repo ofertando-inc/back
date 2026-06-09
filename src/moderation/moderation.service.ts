@@ -13,7 +13,10 @@ import { RefreshTokensService } from '../auth/refresh-tokens.service';
 import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
-import type { PaginatedResult } from '../common/pagination/paginated-result.type';
+import type {
+  CountedPaginatedResult,
+  PaginatedResult,
+} from '../common/pagination/paginated-result.type';
 import { ListOffersQueryDto } from '../offers/dto/list-offers-query.dto';
 import { OffersService } from '../offers/offers.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
@@ -78,7 +81,7 @@ export class ModerationService {
   listOffers(
     query: ListOffersQueryDto,
     viewerId: string,
-  ): Promise<PaginatedResult<OfferResponse>> {
+  ): Promise<CountedPaginatedResult<OfferResponse>> {
     return this.offersService.findAll(query, { viewerId, admin: true });
   }
 

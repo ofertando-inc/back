@@ -14,7 +14,10 @@ import {
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import type { PaginatedResult } from '../common/pagination/paginated-result.type';
+import type {
+  CountedPaginatedResult,
+  PaginatedResult,
+} from '../common/pagination/paginated-result.type';
 import { ListOffersQueryDto } from '../offers/dto/list-offers-query.dto';
 import { OffersExpirationService } from '../offers/offers-expiration.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
@@ -36,7 +39,7 @@ export class AdminOffersController {
   list(
     @CurrentUser() admin: PublicUser,
     @Query() query: ListOffersQueryDto,
-  ): Promise<PaginatedResult<OfferResponse>> {
+  ): Promise<CountedPaginatedResult<OfferResponse>> {
     return this.moderationService.listOffers(query, admin.id);
   }
 

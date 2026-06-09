@@ -9,4 +9,9 @@ export interface ScoreCursor {
   id: string;
 }
 
-export type OfferCursor = DateCursor | ScoreCursor;
+export interface EndingCursor {
+  endDate: string;
+  id: string;
+}
+
+export type OfferCursor = DateCursor | ScoreCursor | EndingCursor;
