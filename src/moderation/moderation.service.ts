@@ -22,7 +22,9 @@ import type { PublicUser } from '../users/types/public-user.type';
 import { ListModerationLogQueryDto } from './dto/list-moderation-log-query.dto';
 import { ListReportedCommentsQueryDto } from './dto/list-reported-comments-query.dto';
 import { ListReportsQueryDto } from './dto/list-reports-query.dto';
+import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { ModerationDecisionDto } from './dto/moderation-decision.dto';
+import type { AdminUserDetail } from './types/admin-user-detail.type';
 import type { CommentModerationSummary } from './types/comment-moderation-summary.type';
 import type { ModerationLogEntry } from './types/moderation-log-entry.type';
 import type { ModerationSummary } from './types/moderation-summary.type';
@@ -416,6 +418,88 @@ export class ModerationService {
               id: last.id,
             })
           : null,
+    };
+  }
+
+  async listUsers(
+    query: ListUsersQueryDto,
+  ): Promise<PaginatedResult<PublicUser>> {
+    const limit = query.limit ?? 20;
+    const where: Prisma.UserWhereInput = {};
+
+    if (query.search) {
+      where.OR = [
+        { username: { contains: query.search, mode: 'insensitive' } },
+        { email: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+
+    if (query.cursor) {
+      where.AND = [
+        this.buildReportCursorWhere(decodeCursor<ReportCursor>(query.cursor)),
+      ];
+    }
+
+    const items = await this.prisma.user.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      select: publicUserSelect,
+    });
+
+    const hasMore = items.length > limit;
+    const trimmed = hasMore ? items.slice(0, limit) : items;
+    const last = trimmed[trimmed.length - 1];
+
+    return {
+      items: trimmed,
+      nextCursor:
+        hasMore && last
+          ? encodeCursor<ReportCursor>({
+              createdAt: last.createdAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
+  }
+
+  async getUserDetail(userId: string): Promise<AdminUserDetail> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: publicUserSelect,
+    });
+
+    if (!user) {
+      throw new AppException(ErrorKey.UserNotFound, HttpStatus.NOT_FOUND);
+    }
+
+    const [offers, comments, history] = await this.prisma.$transaction([
+      this.prisma.offer.count({ where: { createdById: userId } }),
+      this.prisma.comment.count({ where: { userId } }),
+      this.prisma.moderationLog.findMany({
+        where: {
+          targetType: ModerationTargetType.USER,
+          targetId: userId,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 20,
+        include: { actor: { select: { id: true, username: true } } },
+      }),
+    ]);
+
+    return {
+      ...user,
+      counts: { offers, comments },
+      moderationHistory: history.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        targetType: entry.targetType,
+        targetId: entry.targetId,
+        reason: entry.reason,
+        note: entry.note,
+        createdAt: entry.createdAt,
+        actor: entry.actor,
+      })),
     };
   }
 

@@ -934,6 +934,53 @@
           "response": []
         },
         {
+          "name": "List/search users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.items && body.items.length) {",
+                  "  pm.environment.set('userId', body.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users?search=&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users"],
+              "query": [
+                { "key": "search", "value": "" },
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Admin only. Lists/searches users (PublicUser), cursor-paginated. search matches username or email (case-insensitive). Captures the first userId."
+          },
+          "response": []
+        },
+        {
+          "name": "User detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/users/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "users", "{{userId}}"]
+            },
+            "description": "Admin only. Returns the user (PublicUser) plus counts { offers, comments } and the recent moderationHistory (sanctions on this user, from the log). 404 user.not_found if unknown."
+          },
+          "response": []
+        },
+        {
           "name": "Disable user",
           "event": [
             {
