@@ -204,6 +204,42 @@
             "description": "Current user activity counters: { offerCount, commentCount } (non-deleted offers and comments authored by the user)."
           },
           "response": []
+        },
+        {
+          "name": "User comments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/comments?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "comments"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Cursor-paginated list of the current user's comments (most recent first), each with its offer context { id, title }. Author-deleted comments are excluded; moderator-hidden ones carry a `hidden` flag."
+          },
+          "response": []
+        },
+        {
+          "name": "User votes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/votes?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "votes"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Cursor-paginated list of the offers the current user voted on (most recent first), each with { type, offer: { id, title, score } }. Votes on deleted offers are excluded."
+          },
+          "response": []
         }
       ]
     },
