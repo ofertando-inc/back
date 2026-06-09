@@ -304,6 +304,20 @@
           "response": []
         },
         {
+          "name": "Offer facets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/facets",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "facets"]
+            },
+            "description": "Public. Data-driven filter values over publicly listable offers (ACTIVE + EXPIRED): { cities: [{ value, count }], stores: [{ value, count }], categories: [{ slug, name, count }] }."
+          },
+          "response": []
+        },
+        {
           "name": "List popular offers this week",
           "request": {
             "method": "GET",

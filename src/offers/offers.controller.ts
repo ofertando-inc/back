@@ -24,6 +24,7 @@ import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 import { UpdateOfferDto } from './dto/update-offer.dto';
 import { OfferOwnerGuard } from './guards/offer-owner.guard';
 import { OffersService } from './offers.service';
+import type { OfferFacets } from './types/offer-facets.type';
 import type { OfferResponse } from './types/offer-response.type';
 
 @Controller('offers')
@@ -49,6 +50,12 @@ export class OffersController {
       ownerId: user.id,
       viewerId: user.id,
     });
+  }
+
+  // Declared before ':id' so the static path is not captured as an offer id.
+  @Get('facets')
+  facets(): Promise<OfferFacets> {
+    return this.offersService.getFacets();
   }
 
   @UseGuards(OptionalJwtAuthGuard)

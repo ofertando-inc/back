@@ -19,9 +19,15 @@ import type {
   OfferCursor,
   ScoreCursor,
 } from './types/offer-cursor.type';
+import type { OfferFacets } from './types/offer-facets.type';
 import type { OfferResponse } from './types/offer-response.type';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Facets reflect the publicly listable offers.
+const VISIBLE_OFFER = {
+  status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+} satisfies Prisma.OfferWhereInput;
 
 type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
@@ -151,6 +157,42 @@ export class OffersService {
       items: trimmed.map((offer) => this.toOfferResponse(offer)),
       nextCursor: hasMore && last ? this.encodeCursorFor(last, sort) : null,
       total,
+    };
+  }
+
+  async getFacets(): Promise<OfferFacets> {
+    // Read-only aggregates — no transaction needed; run them concurrently.
+    const [cities, stores, categories] = await Promise.all([
+      this.prisma.offer.groupBy({
+        by: ['city'],
+        where: VISIBLE_OFFER,
+        _count: true,
+        orderBy: { city: 'asc' },
+      }),
+      this.prisma.offer.groupBy({
+        by: ['storeName'],
+        where: VISIBLE_OFFER,
+        _count: true,
+        orderBy: { storeName: 'asc' },
+      }),
+      this.prisma.category.findMany({
+        orderBy: { order: 'asc' },
+        select: {
+          slug: true,
+          name: true,
+          _count: { select: { offers: { where: VISIBLE_OFFER } } },
+        },
+      }),
+    ]);
+
+    return {
+      cities: cities.map((c) => ({ value: c.city, count: c._count })),
+      stores: stores.map((s) => ({ value: s.storeName, count: s._count })),
+      categories: categories.map((c) => ({
+        slug: c.slug,
+        name: c.name,
+        count: c._count.offers,
+      })),
     };
   }
 
