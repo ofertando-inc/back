@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Query, UseGuards } from '@nestjs/common';
 
 import { CommentsService } from '../comments/comments.service';
 import type { MyComment } from '../comments/types/my-comment.type';
@@ -8,6 +8,7 @@ import { CursorPaginationQueryDto } from '../common/pagination/cursor-pagination
 import type { PaginatedResult } from '../common/pagination/paginated-result.type';
 import type { MyVote } from '../votes/types/my-vote.type';
 import { VotesService } from '../votes/votes.service';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import type { PublicUser } from './types/public-user.type';
 import type { UserStats } from './types/user-stats.type';
 import { UsersService } from './users.service';
@@ -24,6 +25,15 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: PublicUser): PublicUser {
     return user;
+  }
+
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  updateProfile(
+    @CurrentUser() user: PublicUser,
+    @Body() dto: UpdateProfileDto,
+  ): Promise<PublicUser> {
+    return this.usersService.updateProfile(user.id, dto);
   }
 
   @Get('me/stats')
