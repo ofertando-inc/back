@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Extended `GET /offers` with `q` (free-text search over title, description and store name, case-insensitive), a `store` filter (exact store name), a `sort=ending` mode (soonest-ending first, with its own cursor) and `includeExpired=false` to hide expired offers server-side
+- The offers listing now returns a `total` (full match count, independent of the page limit) — the response shape is `{ items, nextCursor, total }` (`CountedPaginatedResult`), applied to the public, `mine` and admin offer lists
+
 ## [0.9.0] - 2026-06-09
 
 ### Added
