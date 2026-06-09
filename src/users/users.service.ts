@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { OfferStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PublicUser } from './types/public-user.type';
+import { UserStats } from './types/user-stats.type';
 
 type CreateUserData = {
   email: string;
@@ -48,5 +49,16 @@ export class UsersService {
       where: { username },
       select: this.publicUserSelect,
     });
+  }
+
+  async getStats(userId: string): Promise<UserStats> {
+    const [offerCount, commentCount] = await Promise.all([
+      this.prisma.offer.count({
+        where: { createdById: userId, status: { not: OfferStatus.DELETED } },
+      }),
+      this.prisma.comment.count({ where: { userId, deletedAt: null } }),
+    ]);
+
+    return { offerCount, commentCount };
   }
 }

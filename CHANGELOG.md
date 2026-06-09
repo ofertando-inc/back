@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `GET /categories` (public) returning `[{ id, slug, name, order }]` for the category nav, filters and the offer-creation select
 - `CreateOfferDto` now requires `categoryIds` (≥1, validated against existing categories — `offer.invalid_category` otherwise); `UpdateOfferDto` can replace the set; `OfferResponse` embeds `categories: [{ id, slug, name }]`; and `GET /offers?category=<slug>` filters offers that have the given category
 - Added `GET /offers/facets` (public) returning data-driven filter values over the publicly listable offers (ACTIVE + EXPIRED): `{ cities: [{ value, count }], stores: [{ value, count }], categories: [{ slug, name, count }] }`
+- Added `GET /users/me/stats` (authenticated) returning the current user's activity counters `{ offerCount, commentCount }` (non-deleted offers and comments they authored)
 
 ## [0.9.0] - 2026-06-09
 
