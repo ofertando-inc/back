@@ -77,12 +77,13 @@ type PrismaOfferMock = {
   findMany: jest.Mock;
   update: jest.Mock;
   count: jest.Mock;
+  groupBy: jest.Mock;
 };
 
 describe('OffersService', () => {
   let service: OffersService;
   let prismaOffer: PrismaOfferMock;
-  let prismaCategory: { count: jest.Mock };
+  let prismaCategory: { count: jest.Mock; findMany: jest.Mock };
 
   beforeEach(async () => {
     prismaOffer = {
@@ -92,8 +93,12 @@ describe('OffersService', () => {
       findMany: jest.fn(),
       update: jest.fn(),
       count: jest.fn().mockResolvedValue(0),
+      groupBy: jest.fn(),
     };
-    prismaCategory = { count: jest.fn().mockResolvedValue(1) };
+    prismaCategory = {
+      count: jest.fn().mockResolvedValue(1),
+      findMany: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -746,6 +751,31 @@ describe('OffersService', () => {
       const result = await service.findAll({} as ListOffersQueryDto);
 
       expect(result.total).toBe(42);
+    });
+  });
+
+  describe('getFacets', () => {
+    it('aggregates cities, stores and category counts over visible offers', async () => {
+      prismaOffer.groupBy
+        .mockResolvedValueOnce([
+          { city: 'Bogotá', _count: 3 },
+          { city: 'Cali', _count: 1 },
+        ])
+        .mockResolvedValueOnce([{ storeName: 'Acme', _count: 4 }]);
+      prismaCategory.findMany.mockResolvedValue([
+        { slug: 'technology', name: 'Technology', _count: { offers: 2 } },
+      ]);
+
+      const result = await service.getFacets();
+
+      expect(result.cities).toEqual([
+        { value: 'Bogotá', count: 3 },
+        { value: 'Cali', count: 1 },
+      ]);
+      expect(result.stores).toEqual([{ value: 'Acme', count: 4 }]);
+      expect(result.categories).toEqual([
+        { slug: 'technology', name: 'Technology', count: 2 },
+      ]);
     });
   });
 });
