@@ -172,6 +172,7 @@ const validOfferPayload = () => ({
 describe('Moderation flow (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
+  let categoryId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -182,6 +183,9 @@ describe('Moderation flow (e2e)', () => {
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
+
+    const cats = await request(app.getHttpServer()).get('/categories');
+    categoryId = (cats.body as { id: string }[])[0].id;
   });
 
   beforeEach(async () => {
@@ -231,7 +235,11 @@ describe('Moderation flow (e2e)', () => {
     const response = await request(app.getHttpServer())
       .post('/offers')
       .set('Authorization', `Bearer ${token}`)
-      .send({ ...validOfferPayload(), ...overrides });
+      .send({
+        ...validOfferPayload(),
+        categoryIds: [categoryId],
+        ...overrides,
+      });
     return response.body as OfferBody;
   }
 
