@@ -30,6 +30,8 @@ type MyVoteBody = {
 
 type Paginated<T> = { items: T[]; nextCursor: string | null };
 
+type ErrorBody = { key: string; statusCode: number };
+
 function extractAccessTokenCookie(setCookieHeader: unknown): string {
   const cookies = Array.isArray(setCookieHeader)
     ? (setCookieHeader as string[])
@@ -211,6 +213,101 @@ describe('Users flow (e2e)', () => {
         score: 1,
       });
       expect(body.nextCursor).toBeNull();
+    });
+  });
+
+  describe('PATCH /users/me', () => {
+    function patchMe(token: string, body: Record<string, unknown>) {
+      return request(app.getHttpServer())
+        .patch('/users/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+    }
+
+    function login(email: string, password: string) {
+      return request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ email, password });
+    }
+
+    it('rejects without authentication with 401', async () => {
+      const res = await request(app.getHttpServer())
+        .patch('/users/me')
+        .send({ username: 'whatever' });
+      expect(res.status).toBe(401);
+    });
+
+    it('updates the username without the current password', async () => {
+      const user = await registerUser('pu@example.com', 'pu');
+
+      const res = await patchMe(user.accessToken, { username: 'pu-renamed' });
+
+      expect(res.status).toBe(200);
+      expect((res.body as { username: string }).username).toBe('pu-renamed');
+    });
+
+    it('rejects a username already taken by another user', async () => {
+      await registerUser('taken@example.com', 'taken');
+      const user = await registerUser('mover@example.com', 'mover');
+
+      const res = await patchMe(user.accessToken, { username: 'taken' });
+
+      expect(res.status).toBe(400);
+      expect((res.body as ErrorBody).key).toBe('user.username_taken');
+    });
+
+    it('requires the current password to change the email', async () => {
+      const user = await registerUser('np@example.com', 'np');
+
+      const res = await patchMe(user.accessToken, {
+        email: 'np-new@example.com',
+      });
+
+      expect(res.status).toBe(400);
+      expect((res.body as ErrorBody).key).toBe(
+        'user.current_password_required',
+      );
+    });
+
+    it('rejects a wrong current password', async () => {
+      const user = await registerUser('wp@example.com', 'wp');
+
+      const res = await patchMe(user.accessToken, {
+        email: 'wp-new@example.com',
+        currentPassword: 'not-the-password',
+      });
+
+      expect(res.status).toBe(400);
+      expect((res.body as ErrorBody).key).toBe('user.invalid_current_password');
+    });
+
+    it('rejects an email already taken by another user', async () => {
+      await registerUser('owner@example.com', 'owner');
+      const user = await registerUser('claimer@example.com', 'claimer');
+
+      const res = await patchMe(user.accessToken, {
+        email: 'owner@example.com',
+        currentPassword: 'password123',
+      });
+
+      expect(res.status).toBe(400);
+      expect((res.body as ErrorBody).key).toBe('user.email_taken');
+    });
+
+    it('changes the password and lets the user log in with the new one', async () => {
+      const user = await registerUser('cp2@example.com', 'cp2');
+
+      const res = await patchMe(user.accessToken, {
+        password: 'brand-new-password',
+        currentPassword: 'password123',
+      });
+      expect(res.status).toBe(200);
+
+      const withOld = await login('cp2@example.com', 'password123');
+      expect(withOld.status).toBe(401);
+
+      const withNew = await login('cp2@example.com', 'brand-new-password');
+      expect(withNew.status).toBe(200);
     });
   });
 });
