@@ -127,15 +127,28 @@ model Offer {
   deletedAt    DateTime?
 
   createdById String
-  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdBy   User       @relation(fields: [createdById], references: [id], onDelete: Restrict)
   votes       Vote[]
   reports     Report[]
   comments    Comment[]
+  categories  Category[]
 
   @@index([status])
   @@index([createdById])
   @@index([city])
   @@map("offers")
+}
+
+model Category {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  offers Offer[]
+
+  @@map("categories")
 }
 
 model Vote {

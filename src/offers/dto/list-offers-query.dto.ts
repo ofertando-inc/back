@@ -63,6 +63,10 @@ export class ListOffersQueryDto {
 
   @IsOptional()
   @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
   offerType?: string;
 
   @IsOptional()

@@ -26,6 +26,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
   votes?: { type: VoteType }[];
+  categories: { id: string; slug: string; name: string }[];
 };
 
 @Injectable()
@@ -38,6 +39,7 @@ export class OffersService {
 
     this.assertStartBeforeEnd(startDate, endDate);
     this.assertEndInFuture(endDate);
+    const categoryIds = await this.resolveCategoryIds(dto.categoryIds);
 
     const offer = await this.prisma.offer.create({
       data: {
@@ -50,11 +52,27 @@ export class OffersService {
         startDate,
         endDate,
         createdById: userId,
+        categories: { connect: categoryIds.map((id) => ({ id })) },
       },
       include: this.buildOfferResponseInclude(userId),
     });
 
     return this.toOfferResponse(offer);
+  }
+
+  // Validates that the given category ids all exist and returns them deduped.
+  private async resolveCategoryIds(categoryIds: string[]): Promise<string[]> {
+    const ids = [...new Set(categoryIds)];
+    const count = await this.prisma.category.count({
+      where: { id: { in: ids } },
+    });
+    if (count !== ids.length) {
+      throw new AppException(
+        ErrorKey.OfferInvalidCategory,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return ids;
   }
 
   async findById(
@@ -165,6 +183,12 @@ export class OffersService {
       this.assertStartBeforeEnd(startDate, endDate);
     }
 
+    // Replacing the category set when provided (must keep at least one).
+    const categoryIds =
+      dto.categoryIds !== undefined
+        ? await this.resolveCategoryIds(dto.categoryIds)
+        : undefined;
+
     const updated = await this.prisma.offer.update({
       where: { id },
       data: {
@@ -178,6 +202,9 @@ export class OffersService {
           startDate: new Date(dto.startDate),
         }),
         ...(dto.endDate !== undefined && { endDate: new Date(dto.endDate) }),
+        ...(categoryIds !== undefined && {
+          categories: { set: categoryIds.map((id) => ({ id })) },
+        }),
       },
       include: this.buildOfferResponseInclude(viewerId),
     });
@@ -229,6 +256,10 @@ export class OffersService {
   private buildOfferResponseInclude(viewerId?: string): Prisma.OfferInclude {
     const include: Prisma.OfferInclude = {
       createdBy: { select: { username: true } },
+      categories: {
+        select: { id: true, slug: true, name: true },
+        orderBy: { order: 'asc' },
+      },
     };
 
     if (viewerId) {
@@ -243,12 +274,13 @@ export class OffersService {
   }
 
   private toOfferResponse(offer: OfferWithResponseRelations): OfferResponse {
-    const { createdBy, votes, ...payload } = offer;
+    const { createdBy, votes, categories, ...payload } = offer;
 
     return {
       ...payload,
       createdByUsername: createdBy.username,
       userVote: votes?.[0]?.type ?? null,
+      categories,
     };
   }
 
@@ -284,6 +316,9 @@ export class OffersService {
     }
     if (query.offerType) {
       where.offerType = query.offerType;
+    }
+    if (query.category) {
+      where.categories = { some: { slug: query.category } };
     }
 
     if (query.q) {

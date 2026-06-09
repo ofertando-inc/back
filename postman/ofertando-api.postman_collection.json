@@ -194,6 +194,39 @@
       ]
     },
     {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "List categories",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (Array.isArray(body) && body.length) {",
+                  "  pm.environment.set('categoryId', body[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"]
+            },
+            "description": "Public. Returns [{ id, slug, name, order }] ordered by order. Powers the category nav, the ?category=<slug> filter and the offer-creation multi-select. Captures the first categoryId."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Offers",
       "item": [
         {
@@ -240,6 +273,12 @@
                   "value": "",
                   "disabled": true,
                   "description": "exact store name filter"
+                },
+                {
+                  "key": "category",
+                  "value": "",
+                  "disabled": true,
+                  "description": "category slug filter (offers having this category)"
                 },
                 {
                   "key": "offerType",
@@ -352,7 +391,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Big discount at Acme\",\n  \"description\": \"50% off on selected items this week only\",\n  \"offerType\": \"discount\",\n  \"externalUrl\": \"https://example.com/promo\",\n  \"storeName\": \"Acme Store\",\n  \"city\": \"Bogotá\",\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\"\n}"
+              "raw": "{\n  \"title\": \"Big discount at Acme\",\n  \"description\": \"50% off on selected items this week only\",\n  \"offerType\": \"discount\",\n  \"externalUrl\": \"https://example.com/promo\",\n  \"storeName\": \"Acme Store\",\n  \"city\": \"Bogotá\",\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\",\n  \"categoryIds\": [\"{{categoryId}}\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/offers",
