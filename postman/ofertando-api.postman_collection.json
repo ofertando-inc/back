@@ -190,6 +190,20 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "User stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "stats"]
+            },
+            "description": "Current user activity counters: { offerCount, commentCount } (non-deleted offers and comments authored by the user)."
+          },
+          "response": []
         }
       ]
     },
