@@ -4,7 +4,7 @@ import { Offer, OfferStatus, Prisma, VoteType } from '@prisma/client';
 import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
-import type { PaginatedResult } from '../common/pagination/paginated-result.type';
+import type { CountedPaginatedResult } from '../common/pagination/paginated-result.type';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import {
@@ -15,6 +15,7 @@ import {
 import { UpdateOfferDto } from './dto/update-offer.dto';
 import type {
   DateCursor,
+  EndingCursor,
   OfferCursor,
   ScoreCursor,
 } from './types/offer-cursor.type';
@@ -99,22 +100,30 @@ export class OffersService {
   async findAll(
     query: ListOffersQueryDto,
     options: { ownerId?: string; viewerId?: string; admin?: boolean } = {},
-  ): Promise<PaginatedResult<OfferResponse>> {
+  ): Promise<CountedPaginatedResult<OfferResponse>> {
     const sort = query.sort ?? OfferSortMode.Date;
     const limit = query.limit ?? 20;
 
     const where = this.buildWhere(query, options);
-    if (query.cursor) {
-      const cursor = this.decodeOfferCursor(query.cursor, sort);
-      Object.assign(where, { AND: [this.cursorWhere(cursor, sort)] });
-    }
+    // total counts the whole filtered set (the cursor predicate is excluded).
+    const findWhere: Prisma.OfferWhereInput = query.cursor
+      ? {
+          ...where,
+          AND: [
+            this.cursorWhere(this.decodeOfferCursor(query.cursor, sort), sort),
+          ],
+        }
+      : where;
 
-    const items = await this.prisma.offer.findMany({
-      where,
-      include: this.buildOfferResponseInclude(options.viewerId),
-      orderBy: this.buildOrderBy(sort),
-      take: limit + 1,
-    });
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.offer.count({ where }),
+      this.prisma.offer.findMany({
+        where: findWhere,
+        include: this.buildOfferResponseInclude(options.viewerId),
+        orderBy: this.buildOrderBy(sort),
+        take: limit + 1,
+      }),
+    ]);
 
     const hasMore = items.length > limit;
     const trimmed = hasMore ? items.slice(0, limit) : items;
@@ -123,6 +132,7 @@ export class OffersService {
     return {
       items: trimmed.map((offer) => this.toOfferResponse(offer)),
       nextCursor: hasMore && last ? this.encodeCursorFor(last, sort) : null,
+      total,
     };
   }
 
@@ -255,7 +265,11 @@ export class OffersService {
     } else {
       // Public listings show active and expired offers (expired ones are
       // greyed out client-side); moderation-only statuses stay hidden.
-      where.status = { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] };
+      // includeExpired=false drops the expired ones server-side.
+      where.status =
+        query.includeExpired === false
+          ? OfferStatus.ACTIVE
+          : { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] };
     }
 
     if (options.ownerId) {
@@ -265,8 +279,20 @@ export class OffersService {
     if (query.city) {
       where.city = query.city;
     }
+    if (query.store) {
+      where.storeName = query.store;
+    }
     if (query.offerType) {
       where.offerType = query.offerType;
+    }
+
+    if (query.q) {
+      // Free-text search over title, description and store name.
+      where.OR = [
+        { title: { contains: query.q, mode: 'insensitive' } },
+        { description: { contains: query.q, mode: 'insensitive' } },
+        { storeName: { contains: query.q, mode: 'insensitive' } },
+      ];
     }
 
     const cutoff = this.periodCutoff(query.period ?? OfferPeriod.All);
@@ -300,12 +326,19 @@ export class OffersService {
     if (sort === OfferSortMode.Score) {
       return [{ score: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }];
     }
+    if (sort === OfferSortMode.Ending) {
+      // Soonest-ending first.
+      return [{ endDate: 'asc' }, { id: 'asc' }];
+    }
     return [{ createdAt: 'desc' }, { id: 'desc' }];
   }
 
   private decodeOfferCursor(raw: string, sort: OfferSortMode): OfferCursor {
     if (sort === OfferSortMode.Score) {
       return decodeCursor<ScoreCursor>(raw);
+    }
+    if (sort === OfferSortMode.Ending) {
+      return decodeCursor<EndingCursor>(raw);
     }
     return decodeCursor<DateCursor>(raw);
   }
@@ -325,7 +358,14 @@ export class OffersService {
         ],
       };
     }
-    const c: DateCursor = cursor;
+    if (sort === OfferSortMode.Ending) {
+      const c = cursor as EndingCursor;
+      const endDate = new Date(c.endDate);
+      return {
+        OR: [{ endDate: { gt: endDate } }, { endDate, id: { gt: c.id } }],
+      };
+    }
+    const c = cursor as DateCursor;
     const createdAt = new Date(c.createdAt);
     return {
       OR: [{ createdAt: { lt: createdAt } }, { createdAt, id: { lt: c.id } }],
@@ -337,6 +377,13 @@ export class OffersService {
       const payload: ScoreCursor = {
         score: offer.score,
         createdAt: offer.createdAt.toISOString(),
+        id: offer.id,
+      };
+      return encodeCursor(payload);
+    }
+    if (sort === OfferSortMode.Ending) {
+      const payload: EndingCursor = {
+        endDate: offer.endDate.toISOString(),
         id: offer.id,
       };
       return encodeCursor(payload);

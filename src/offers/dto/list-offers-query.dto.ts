@@ -1,10 +1,22 @@
 import { OfferStatus } from '@prisma/client';
-import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+
+import { trim } from '../../common/transformers/trim.transformer';
 
 export enum OfferSortMode {
   Date = 'date',
   Score = 'score',
+  Ending = 'ending',
 }
 
 export enum OfferPeriod {
@@ -35,9 +47,19 @@ export class ListOffersQueryDto {
   @IsEnum(OfferPeriod)
   period?: OfferPeriod = OfferPeriod.All;
 
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
   @IsOptional()
   @IsString()
   city?: string;
+
+  @IsOptional()
+  @IsString()
+  store?: string;
 
   @IsOptional()
   @IsString()
@@ -46,4 +68,12 @@ export class ListOffersQueryDto {
   @IsOptional()
   @IsEnum(OfferStatus)
   status?: OfferStatus;
+
+  // Public listings include expired offers by default; pass false to hide them.
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  includeExpired?: boolean;
 }

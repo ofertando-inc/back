@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UserRole, VoteType } from '@prisma/client';
+import { OfferStatus, UserRole, VoteType } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -39,12 +39,15 @@ type OfferBody = {
   createdByUsername: string;
   userVote: 'UP' | 'DOWN' | null;
   city: string;
+  storeName: string;
   offerType: string;
+  endDate: string;
 };
 
 type ListBody = {
   items: OfferBody[];
   nextCursor: string | null;
+  total: number;
 };
 
 type ErrorBody = {
@@ -266,6 +269,82 @@ describe('Offers flow (e2e)', () => {
 
       expect(response.status).toBe(400);
       expect(body.key).toBe('pagination.invalid_cursor');
+    });
+
+    it('searches offers by q (title/description/store)', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      await createOfferAs(author.accessToken, { title: 'Sony headphones' });
+      await createOfferAs(author.accessToken, { title: 'Bose speaker' });
+
+      const res = await request(app.getHttpServer()).get('/offers?q=sony');
+      const body = res.body as ListBody;
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0].title).toBe('Sony headphones');
+    });
+
+    it('filters by store name', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      await createOfferAs(author.accessToken, { storeName: 'Carrefour' });
+      await createOfferAs(author.accessToken, { storeName: 'Auchan' });
+
+      const res = await request(app.getHttpServer()).get(
+        '/offers?store=Auchan',
+      );
+      const body = res.body as ListBody;
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0].storeName).toBe('Auchan');
+    });
+
+    it('sorts by soonest-ending with sort=ending', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      await createOfferAs(author.accessToken, {
+        title: 'Later',
+        endDate: futureIso(10),
+      });
+      await createOfferAs(author.accessToken, {
+        title: 'Sooner',
+        endDate: futureIso(2),
+      });
+
+      const res = await request(app.getHttpServer()).get('/offers?sort=ending');
+      const body = res.body as ListBody;
+      expect(body.items[0].title).toBe('Sooner');
+    });
+
+    it('hides expired offers with includeExpired=false', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const active = await createOfferAs(author.accessToken, {
+        title: 'Active',
+      });
+      const expired = await createOfferAs(author.accessToken, {
+        title: 'Expired',
+      });
+      await prisma.offer.update({
+        where: { id: expired.id },
+        data: { status: OfferStatus.EXPIRED },
+      });
+
+      const withExpired = await request(app.getHttpServer()).get('/offers');
+      expect((withExpired.body as ListBody).items).toHaveLength(2);
+
+      const without = await request(app.getHttpServer()).get(
+        '/offers?includeExpired=false',
+      );
+      const body = without.body as ListBody;
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0].id).toBe(active.id);
+    });
+
+    it('returns the total count (independent of the page limit)', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      await createOfferAs(author.accessToken, { title: 'A' });
+      await createOfferAs(author.accessToken, { title: 'B' });
+      await createOfferAs(author.accessToken, { title: 'C' });
+
+      const res = await request(app.getHttpServer()).get('/offers?limit=2');
+      const body = res.body as ListBody;
+      expect(body.items).toHaveLength(2);
+      expect(body.total).toBe(3);
     });
   });
 

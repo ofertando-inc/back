@@ -217,7 +217,7 @@
                 {
                   "key": "sort",
                   "value": "date",
-                  "description": "date | score"
+                  "description": "date | score | ending (soonest endDate first)"
                 },
                 {
                   "key": "period",
@@ -225,14 +225,32 @@
                   "description": "all | day | week | month | year"
                 },
                 {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": "free-text search over title, description and store"
+                },
+                {
                   "key": "city",
                   "value": "",
                   "disabled": true
                 },
                 {
+                  "key": "store",
+                  "value": "",
+                  "disabled": true,
+                  "description": "exact store name filter"
+                },
+                {
                   "key": "offerType",
                   "value": "",
                   "disabled": true
+                },
+                {
+                  "key": "includeExpired",
+                  "value": "false",
+                  "disabled": true,
+                  "description": "set false to hide expired offers (default: shown)"
                 },
                 {
                   "key": "cursor",
@@ -241,7 +259,8 @@
                   "description": "opaque base64url cursor from a previous response's nextCursor"
                 }
               ]
-            }
+            },
+            "description": "Public list. Response is { items, nextCursor, total } — total is the full match count, independent of the page limit."
           },
           "response": []
         },
