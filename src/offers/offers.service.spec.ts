@@ -51,6 +51,7 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
 type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
   votes?: { type: VoteType }[];
+  categories: { id: string; slug: string; name: string }[];
 };
 
 function buildOfferWithRelations(
@@ -58,11 +59,13 @@ function buildOfferWithRelations(
   relations: {
     createdByUsername?: string;
     votes?: { type: VoteType }[];
+    categories?: { id: string; slug: string; name: string }[];
   } = {},
 ): OfferWithResponseRelations {
   return {
     ...buildOffer(overrides),
     createdBy: { username: relations.createdByUsername ?? 'author' },
+    categories: relations.categories ?? [],
     ...(relations.votes !== undefined && { votes: relations.votes }),
   };
 }
@@ -79,6 +82,7 @@ type PrismaOfferMock = {
 describe('OffersService', () => {
   let service: OffersService;
   let prismaOffer: PrismaOfferMock;
+  let prismaCategory: { count: jest.Mock };
 
   beforeEach(async () => {
     prismaOffer = {
@@ -89,6 +93,7 @@ describe('OffersService', () => {
       update: jest.fn(),
       count: jest.fn().mockResolvedValue(0),
     };
+    prismaCategory = { count: jest.fn().mockResolvedValue(1) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -97,6 +102,7 @@ describe('OffersService', () => {
           provide: PrismaService,
           useValue: {
             offer: prismaOffer,
+            category: prismaCategory,
             $transaction: jest.fn((ops: Promise<unknown>[]) =>
               Promise.all(ops),
             ),
@@ -121,6 +127,7 @@ describe('OffersService', () => {
       city: 'Bogotá',
       startDate: futureStart,
       endDate: futureEnd,
+      categoryIds: ['11111111-1111-1111-1111-111111111111'],
     };
 
     it('persists the offer with createdById set to the caller', async () => {
@@ -140,6 +147,10 @@ describe('OffersService', () => {
         }),
         include: {
           createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
           votes: {
             where: { userId: 'user-42' },
             select: { type: true },
@@ -151,7 +162,37 @@ describe('OffersService', () => {
         ...buildOffer({ createdById: 'user-42' }),
         createdByUsername: 'author',
         userVote: null,
+        categories: [],
       });
+    });
+
+    it('connects the (deduped) categories after validating they exist', async () => {
+      prismaOffer.create.mockResolvedValue(buildOfferWithRelations());
+      prismaCategory.count.mockResolvedValue(2);
+
+      await service.create(
+        { ...baseDto, categoryIds: ['cat-a', 'cat-b', 'cat-a'] },
+        'user-1',
+      );
+
+      expect(prismaCategory.count).toHaveBeenCalledWith({
+        where: { id: { in: ['cat-a', 'cat-b'] } },
+      });
+      const call = firstCallArg<{ data: { categories: unknown } }>(
+        prismaOffer.create,
+      );
+      expect(call.data.categories).toEqual({
+        connect: [{ id: 'cat-a' }, { id: 'cat-b' }],
+      });
+    });
+
+    it('throws offer.invalid_category when a category does not exist', async () => {
+      prismaCategory.count.mockResolvedValue(0);
+
+      await expect(
+        service.create({ ...baseDto, categoryIds: ['ghost'] }, 'user-1'),
+      ).rejects.toMatchObject({ key: ErrorKey.OfferInvalidCategory });
+      expect(prismaOffer.create).not.toHaveBeenCalled();
     });
 
     it('throws offer.invalid_dates when startDate is after endDate', async () => {
@@ -193,7 +234,13 @@ describe('OffersService', () => {
           id: 'offer-1',
           status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
         },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
       });
     });
 
@@ -231,7 +278,13 @@ describe('OffersService', () => {
 
       expect(prismaOffer.findFirst).toHaveBeenCalledWith({
         where: { id: 'offer-1', status: { not: OfferStatus.DELETED } },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
       });
     });
 
@@ -251,6 +304,10 @@ describe('OffersService', () => {
         },
         include: {
           createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
           votes: {
             where: { userId: 'viewer-1' },
             select: { type: true },
@@ -326,7 +383,13 @@ describe('OffersService', () => {
       expect(prismaOffer.update).toHaveBeenCalledWith({
         where: { id: 'offer-1' },
         data: { title: 'New' },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
       });
     });
 
@@ -364,7 +427,13 @@ describe('OffersService', () => {
           startDate: new Date('2099-01-01T00:00:00Z'),
           endDate: new Date('2099-12-31T00:00:00Z'),
         },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
       });
       expect(result.createdByUsername).toBe('author');
       expect(result.userVote).toBeNull();
@@ -390,6 +459,10 @@ describe('OffersService', () => {
         objectContaining({
           include: {
             createdBy: { select: { username: true } },
+            categories: {
+              select: { id: true, slug: true, name: true },
+              orderBy: { order: 'asc' },
+            },
             votes: {
               where: { userId: 'viewer-1' },
               select: { type: true },
@@ -436,7 +509,13 @@ describe('OffersService', () => {
 
       expect(prismaOffer.findMany).toHaveBeenCalledWith({
         where: { status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] } },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 21,
       });
@@ -625,6 +704,17 @@ describe('OffersService', () => {
         prismaOffer.findMany,
       );
       expect(call.where.storeName).toBe('Carrefour');
+    });
+
+    it('filters by category slug', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({ category: 'technology' } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ where: { categories: unknown } }>(
+        prismaOffer.findMany,
+      );
+      expect(call.where.categories).toEqual({ some: { slug: 'technology' } });
     });
 
     it('hides expired offers from the public list when includeExpired=false', async () => {
