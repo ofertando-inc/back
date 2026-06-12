@@ -240,6 +240,24 @@
             "description": "Cursor-paginated list of the offers the current user voted on (most recent first), each with { type, offer: { id, title, score } }. Votes on deleted offers are excluded."
           },
           "response": []
+        },
+        {
+          "name": "Update profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"new_username\",\n  \"email\": \"new@example.com\",\n  \"password\": \"new-password-8+\",\n  \"currentPassword\": \"current-password\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me"]
+            },
+            "description": "Updates the authenticated user's own profile. All fields optional. Changing `email` or `password` requires `currentPassword`; `username` and `email` must be unique. Errors: user.current_password_required, user.invalid_current_password, user.username_taken, user.email_taken."
+          },
+          "response": []
         }
       ]
     },

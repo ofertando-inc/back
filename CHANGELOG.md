@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `GET /users/me/stats` (authenticated) returning the current user's activity counters `{ offerCount, commentCount }` (non-deleted offers and comments they authored)
 - Added `GET /users/me/comments` (authenticated, cursor-paginated) listing the current user's comments most recent first, each with its offer context `{ id, title }`; author-deleted comments are excluded and moderator-hidden ones carry a `hidden` flag
 - Added `GET /users/me/votes` (authenticated, cursor-paginated) listing the offers the current user voted on most recent first, each with `{ type, offer: { id, title, score } }`; votes on deleted offers are excluded
+- Added `PATCH /users/me` (authenticated) to update the user's own `username`, `email` and `password`; changing the email or password requires the `currentPassword` (`user.current_password_required` / `user.invalid_current_password`), and `username`/`email` are kept unique across users (`user.username_taken` / `user.email_taken`)
 
 ## [0.9.0] - 2026-06-09
 
