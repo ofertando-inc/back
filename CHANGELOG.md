@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Extended `GET /offers` with `q` (free-text search over title, description and store name, case-insensitive), a `store` filter (exact store name), a `sort=ending` mode (soonest-ending first, with its own cursor) and `includeExpired=false` to hide expired offers server-side
+- The offers listing now returns a `total` (full match count, independent of the page limit) — the response shape is `{ items, nextCursor, total }` (`CountedPaginatedResult`), applied to the public, `mine` and admin offer lists
+- Added offer categories: a `Category` model (`id`, `slug`, `name`, `order`) seeded with a fixed English-slug set (`technology`, `home`, `fashion`, `groceries`, `restaurants`, `travel`, `entertainment`, `beauty`, `sports`, `kids`, `services`, `other`), a many-to-many `Offer.categories` relation, and the migration (existing offers backfilled to `other`). Slugs are the stable join key the front maps to localized labels/icons
+- Added `GET /categories` (public) returning `[{ id, slug, name, order }]` for the category nav, filters and the offer-creation select
+- `CreateOfferDto` now requires `categoryIds` (≥1, validated against existing categories — `offer.invalid_category` otherwise); `UpdateOfferDto` can replace the set; `OfferResponse` embeds `categories: [{ id, slug, name }]`; and `GET /offers?category=<slug>` filters offers that have the given category
+- Added `GET /offers/facets` (public) returning data-driven filter values over the publicly listable offers (ACTIVE + EXPIRED): `{ cities: [{ value, count }], stores: [{ value, count }], categories: [{ slug, name, count }] }`
+- Added `GET /users/me/stats` (authenticated) returning the current user's activity counters `{ offerCount, commentCount }` (non-deleted offers and comments they authored)
+- Added `GET /users/me/comments` (authenticated, cursor-paginated) listing the current user's comments most recent first, each with its offer context `{ id, title }`; author-deleted comments are excluded and moderator-hidden ones carry a `hidden` flag
+- Added `GET /users/me/votes` (authenticated, cursor-paginated) listing the offers the current user voted on most recent first, each with `{ type, offer: { id, title, score } }`; votes on deleted offers are excluded
+- Added `PATCH /users/me` (authenticated) to update the user's own `username`, `email` and `password`; changing the email or password requires the `currentPassword` (`user.current_password_required` / `user.invalid_current_password`), and `username`/`email` are kept unique across users (`user.username_taken` / `user.email_taken`)
+
 ## [0.9.0] - 2026-06-09
 
 ### Added

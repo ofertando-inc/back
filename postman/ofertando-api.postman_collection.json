@@ -190,6 +190,107 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "User stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "stats"]
+            },
+            "description": "Current user activity counters: { offerCount, commentCount } (non-deleted offers and comments authored by the user)."
+          },
+          "response": []
+        },
+        {
+          "name": "User comments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/comments?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "comments"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Cursor-paginated list of the current user's comments (most recent first), each with its offer context { id, title }. Author-deleted comments are excluded; moderator-hidden ones carry a `hidden` flag."
+          },
+          "response": []
+        },
+        {
+          "name": "User votes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/me/votes?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me", "votes"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Cursor-paginated list of the offers the current user voted on (most recent first), each with { type, offer: { id, title, score } }. Votes on deleted offers are excluded."
+          },
+          "response": []
+        },
+        {
+          "name": "Update profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"new_username\",\n  \"email\": \"new@example.com\",\n  \"password\": \"new-password-8+\",\n  \"currentPassword\": \"current-password\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "me"]
+            },
+            "description": "Updates the authenticated user's own profile. All fields optional. Changing `email` or `password` requires `currentPassword`; `username` and `email` must be unique. Errors: user.current_password_required, user.invalid_current_password, user.username_taken, user.email_taken."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "List categories",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (Array.isArray(body) && body.length) {",
+                  "  pm.environment.set('categoryId', body[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"]
+            },
+            "description": "Public. Returns [{ id, slug, name, order }] ordered by order. Powers the category nav, the ?category=<slug> filter and the offer-creation multi-select. Captures the first categoryId."
+          },
+          "response": []
         }
       ]
     },
@@ -217,7 +318,7 @@
                 {
                   "key": "sort",
                   "value": "date",
-                  "description": "date | score"
+                  "description": "date | score | ending (soonest endDate first)"
                 },
                 {
                   "key": "period",
@@ -225,14 +326,38 @@
                   "description": "all | day | week | month | year"
                 },
                 {
+                  "key": "q",
+                  "value": "",
+                  "disabled": true,
+                  "description": "free-text search over title, description and store"
+                },
+                {
                   "key": "city",
                   "value": "",
                   "disabled": true
                 },
                 {
+                  "key": "store",
+                  "value": "",
+                  "disabled": true,
+                  "description": "exact store name filter"
+                },
+                {
+                  "key": "category",
+                  "value": "",
+                  "disabled": true,
+                  "description": "category slug filter (offers having this category)"
+                },
+                {
                   "key": "offerType",
                   "value": "",
                   "disabled": true
+                },
+                {
+                  "key": "includeExpired",
+                  "value": "false",
+                  "disabled": true,
+                  "description": "set false to hide expired offers (default: shown)"
                 },
                 {
                   "key": "cursor",
@@ -241,7 +366,22 @@
                   "description": "opaque base64url cursor from a previous response's nextCursor"
                 }
               ]
-            }
+            },
+            "description": "Public list. Response is { items, nextCursor, total } — total is the full match count, independent of the page limit."
+          },
+          "response": []
+        },
+        {
+          "name": "Offer facets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/facets",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "facets"]
+            },
+            "description": "Public. Data-driven filter values over publicly listable offers (ACTIVE + EXPIRED): { cities: [{ value, count }], stores: [{ value, count }], categories: [{ slug, name, count }] }."
           },
           "response": []
         },
@@ -333,7 +473,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Big discount at Acme\",\n  \"description\": \"50% off on selected items this week only\",\n  \"offerType\": \"discount\",\n  \"externalUrl\": \"https://example.com/promo\",\n  \"storeName\": \"Acme Store\",\n  \"city\": \"Bogotá\",\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\"\n}"
+              "raw": "{\n  \"title\": \"Big discount at Acme\",\n  \"description\": \"50% off on selected items this week only\",\n  \"offerType\": \"discount\",\n  \"externalUrl\": \"https://example.com/promo\",\n  \"storeName\": \"Acme Store\",\n  \"city\": \"Bogotá\",\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\",\n  \"categoryIds\": [\"{{categoryId}}\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/offers",

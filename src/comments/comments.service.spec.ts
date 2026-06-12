@@ -422,4 +422,85 @@ describe('CommentsService', () => {
       expect(call.where.AND[0].OR).toHaveLength(2);
     });
   });
+
+  describe('findByUser', () => {
+    it('scopes to the author, excludes deleted ones, and maps the offer context', async () => {
+      comment.findMany.mockResolvedValue([
+        {
+          ...buildComment({
+            id: 'comment-1',
+            content: 'My take',
+            createdAt: new Date('2024-06-02T00:00:00Z'),
+            score: 4,
+            replyCount: 2,
+            hiddenAt: new Date('2024-06-03T00:00:00Z'),
+          }),
+          offer: { id: 'offer-1', title: 'A deal' },
+        },
+      ]);
+
+      const result = await service.findByUser('user-1', {});
+
+      const calls = comment.findMany.mock.calls as unknown[][];
+      const call = calls[0]?.[0] as {
+        where: { userId: string; deletedAt: null };
+        include: unknown;
+        orderBy: unknown;
+        take: number;
+      };
+      expect(call.where).toEqual({ userId: 'user-1', deletedAt: null });
+      expect(call.include).toEqual({
+        offer: { select: { id: true, title: true } },
+      });
+      expect(call.take).toBe(21);
+      expect(result.items).toEqual([
+        {
+          id: 'comment-1',
+          content: 'My take',
+          createdAt: new Date('2024-06-02T00:00:00Z'),
+          editedAt: null,
+          score: 4,
+          replyCount: 2,
+          hidden: true,
+          offer: { id: 'offer-1', title: 'A deal' },
+        },
+      ]);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('applies the cursor predicate and returns a next cursor when truncated', async () => {
+      comment.findMany.mockResolvedValue([
+        {
+          ...buildComment({
+            id: 'c-1',
+            createdAt: new Date('2024-06-02T00:00:00Z'),
+          }),
+          offer: { id: 'offer-1', title: 'A' },
+        },
+        {
+          ...buildComment({
+            id: 'c-2',
+            createdAt: new Date('2024-06-01T00:00:00Z'),
+          }),
+          offer: { id: 'offer-2', title: 'B' },
+        },
+      ]);
+      const cursor = encodeCursor({
+        createdAt: '2024-06-05T00:00:00Z',
+        id: 'c-0',
+      });
+
+      const result = await service.findByUser('user-1', { cursor, limit: 1 });
+
+      const calls = comment.findMany.mock.calls as unknown[][];
+      const call = calls[0]?.[0] as {
+        where: { AND: { OR: unknown[] }[] };
+        take: number;
+      };
+      expect(call.where.AND[0].OR).toHaveLength(2);
+      expect(call.take).toBe(2);
+      expect(result.items).toHaveLength(1);
+      expect(result.nextCursor).not.toBeNull();
+    });
+  });
 });

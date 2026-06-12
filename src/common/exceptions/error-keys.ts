@@ -8,11 +8,14 @@ export const ErrorKey = {
   UserUsernameTaken: 'user.username_taken',
   UserNotFound: 'user.not_found',
   UserInvalidStatusTransition: 'user.invalid_status_transition',
+  UserCurrentPasswordRequired: 'user.current_password_required',
+  UserInvalidCurrentPassword: 'user.invalid_current_password',
 
   OfferNotFound: 'offer.not_found',
   OfferForbidden: 'offer.forbidden',
   OfferInvalidDates: 'offer.invalid_dates',
   OfferInvalidStatusTransition: 'offer.invalid_status_transition',
+  OfferInvalidCategory: 'offer.invalid_category',
 
   VoteOfferNotVoteable: 'vote.offer_not_voteable',
 

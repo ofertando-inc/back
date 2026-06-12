@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { UserRole, VoteType } from '@prisma/client';
+import { OfferStatus, UserRole, VoteType } from '@prisma/client';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
@@ -39,12 +39,16 @@ type OfferBody = {
   createdByUsername: string;
   userVote: 'UP' | 'DOWN' | null;
   city: string;
+  storeName: string;
   offerType: string;
+  endDate: string;
+  categories: { id: string; slug: string; name: string }[];
 };
 
 type ListBody = {
   items: OfferBody[];
   nextCursor: string | null;
+  total: number;
 };
 
 type ErrorBody = {
@@ -70,6 +74,8 @@ const validOfferPayload = () => ({
 describe('Offers flow (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
+  // Seeded categories survive resetTestDatabase (only offers/users/etc. are truncated).
+  let categoryId: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -80,6 +86,9 @@ describe('Offers flow (e2e)', () => {
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
+
+    const cats = await request(app.getHttpServer()).get('/categories');
+    categoryId = (cats.body as { id: string }[])[0].id;
   });
 
   beforeEach(async () => {
@@ -117,23 +126,29 @@ describe('Offers flow (e2e)', () => {
 
   async function createOfferAs(
     token: string,
-    overrides: Partial<ReturnType<typeof validOfferPayload>> = {},
+    overrides: Partial<ReturnType<typeof validOfferPayload>> & {
+      categoryIds?: string[];
+    } = {},
   ): Promise<OfferBody> {
     const response = await request(app.getHttpServer())
       .post('/offers')
       .set('Authorization', `Bearer ${token}`)
-      .send({ ...validOfferPayload(), ...overrides });
+      .send({
+        ...validOfferPayload(),
+        categoryIds: [categoryId],
+        ...overrides,
+      });
     return response.body as OfferBody;
   }
 
   describe('POST /offers', () => {
-    it('creates an offer for an authenticated user', async () => {
+    it('creates an offer for an authenticated user with its categories', async () => {
       const author = await registerUser('author@example.com', 'author');
 
       const response = await request(app.getHttpServer())
         .post('/offers')
         .set('Authorization', `Bearer ${author.accessToken}`)
-        .send(validOfferPayload());
+        .send({ ...validOfferPayload(), categoryIds: [categoryId] });
       const body = response.body as OfferBody;
 
       expect(response.status).toBe(201);
@@ -144,16 +159,34 @@ describe('Offers flow (e2e)', () => {
         createdByUsername: author.user.username,
         userVote: null,
       });
+      expect(body.categories).toHaveLength(1);
+      expect(body.categories[0].id).toBe(categoryId);
     });
 
     it('rejects creation without a token with auth.unauthorized', async () => {
       const response = await request(app.getHttpServer())
         .post('/offers')
-        .send(validOfferPayload());
+        .send({ ...validOfferPayload(), categoryIds: [categoryId] });
       const body = response.body as ErrorBody;
 
       expect(response.status).toBe(401);
       expect(body.key).toBe('auth.unauthorized');
+    });
+
+    it('rejects an unknown category with offer.invalid_category', async () => {
+      const author = await registerUser('author@example.com', 'author');
+
+      const response = await request(app.getHttpServer())
+        .post('/offers')
+        .set('Authorization', `Bearer ${author.accessToken}`)
+        .send({
+          ...validOfferPayload(),
+          categoryIds: ['00000000-0000-0000-0000-000000000000'],
+        });
+      const body = response.body as ErrorBody;
+
+      expect(response.status).toBe(400);
+      expect(body.key).toBe('offer.invalid_category');
     });
 
     it('rejects when endDate is before startDate with offer.invalid_dates', async () => {
@@ -164,6 +197,7 @@ describe('Offers flow (e2e)', () => {
         .set('Authorization', `Bearer ${author.accessToken}`)
         .send({
           ...validOfferPayload(),
+          categoryIds: [categoryId],
           startDate: futureIso(7),
           endDate: futureIso(1),
         });
@@ -266,6 +300,105 @@ describe('Offers flow (e2e)', () => {
 
       expect(response.status).toBe(400);
       expect(body.key).toBe('pagination.invalid_cursor');
+    });
+
+    it('searches offers by q (title/description/store)', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      await createOfferAs(author.accessToken, { title: 'Sony headphones' });
+      await createOfferAs(author.accessToken, { title: 'Bose speaker' });
+
+      const res = await request(app.getHttpServer()).get('/offers?q=sony');
+      const body = res.body as ListBody;
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0].title).toBe('Sony headphones');
+    });
+
+    it('filters by store name', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      await createOfferAs(author.accessToken, { storeName: 'Carrefour' });
+      await createOfferAs(author.accessToken, { storeName: 'Auchan' });
+
+      const res = await request(app.getHttpServer()).get(
+        '/offers?store=Auchan',
+      );
+      const body = res.body as ListBody;
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0].storeName).toBe('Auchan');
+    });
+
+    it('filters by category slug', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const cats = (await request(app.getHttpServer()).get('/categories'))
+        .body as { id: string; slug: string }[];
+      const tech = cats.find((c) => c.slug === 'technology')!;
+      const home = cats.find((c) => c.slug === 'home')!;
+      await createOfferAs(author.accessToken, {
+        title: 'Tech offer',
+        categoryIds: [tech.id],
+      });
+      await createOfferAs(author.accessToken, {
+        title: 'Home offer',
+        categoryIds: [home.id],
+      });
+
+      const res = await request(app.getHttpServer()).get(
+        '/offers?category=technology',
+      );
+      const body = res.body as ListBody;
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0].title).toBe('Tech offer');
+    });
+
+    it('sorts by soonest-ending with sort=ending', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      await createOfferAs(author.accessToken, {
+        title: 'Later',
+        endDate: futureIso(10),
+      });
+      await createOfferAs(author.accessToken, {
+        title: 'Sooner',
+        endDate: futureIso(2),
+      });
+
+      const res = await request(app.getHttpServer()).get('/offers?sort=ending');
+      const body = res.body as ListBody;
+      expect(body.items[0].title).toBe('Sooner');
+    });
+
+    it('hides expired offers with includeExpired=false', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const active = await createOfferAs(author.accessToken, {
+        title: 'Active',
+      });
+      const expired = await createOfferAs(author.accessToken, {
+        title: 'Expired',
+      });
+      await prisma.offer.update({
+        where: { id: expired.id },
+        data: { status: OfferStatus.EXPIRED },
+      });
+
+      const withExpired = await request(app.getHttpServer()).get('/offers');
+      expect((withExpired.body as ListBody).items).toHaveLength(2);
+
+      const without = await request(app.getHttpServer()).get(
+        '/offers?includeExpired=false',
+      );
+      const body = without.body as ListBody;
+      expect(body.items).toHaveLength(1);
+      expect(body.items[0].id).toBe(active.id);
+    });
+
+    it('returns the total count (independent of the page limit)', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      await createOfferAs(author.accessToken, { title: 'A' });
+      await createOfferAs(author.accessToken, { title: 'B' });
+      await createOfferAs(author.accessToken, { title: 'C' });
+
+      const res = await request(app.getHttpServer()).get('/offers?limit=2');
+      const body = res.body as ListBody;
+      expect(body.items).toHaveLength(2);
+      expect(body.total).toBe(3);
     });
   });
 
@@ -442,6 +575,50 @@ describe('Offers flow (e2e)', () => {
         true,
       );
       expect(body.items.every((o) => o.userVote === null)).toBe(true);
+    });
+  });
+
+  describe('GET /offers/facets', () => {
+    it('returns cities, stores and category counts over visible offers', async () => {
+      const author = await registerUser('author@example.com', 'author');
+      const cats = (await request(app.getHttpServer()).get('/categories'))
+        .body as { id: string; slug: string }[];
+      const tech = cats.find((c) => c.slug === 'technology')!;
+      const home = cats.find((c) => c.slug === 'home')!;
+
+      await createOfferAs(author.accessToken, {
+        city: 'Bogotá',
+        storeName: 'Acme',
+        categoryIds: [tech.id],
+      });
+      await createOfferAs(author.accessToken, {
+        city: 'Bogotá',
+        storeName: 'Globex',
+        categoryIds: [tech.id, home.id],
+      });
+
+      const res = await request(app.getHttpServer()).get('/offers/facets');
+      expect(res.status).toBe(200);
+      const body = res.body as {
+        cities: { value: string; count: number }[];
+        stores: { value: string; count: number }[];
+        categories: { slug: string; name: string; count: number }[];
+      };
+
+      expect(body.cities).toContainEqual({ value: 'Bogotá', count: 2 });
+      expect(body.stores).toEqual(
+        expect.arrayContaining([
+          { value: 'Acme', count: 1 },
+          { value: 'Globex', count: 1 },
+        ]),
+      );
+      expect(body.categories.find((c) => c.slug === 'technology')).toEqual({
+        slug: 'technology',
+        name: 'Technology',
+        count: 2,
+      });
+      expect(body.categories.find((c) => c.slug === 'home')?.count).toBe(1);
+      expect(body.categories.find((c) => c.slug === 'travel')?.count).toBe(0);
     });
   });
 });

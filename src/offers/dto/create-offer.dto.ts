@@ -1,10 +1,14 @@
 import { Transform } from 'class-transformer';
 import {
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
   IsDateString,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUrl,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 
@@ -51,4 +55,11 @@ export class CreateOfferDto {
 
   @IsDateString()
   endDate: string;
+
+  // At least one category; the front populates a multi-select from GET /categories.
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  categoryIds: string[];
 }

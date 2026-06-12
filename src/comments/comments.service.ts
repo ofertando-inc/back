@@ -3,6 +3,7 @@ import { Comment, OfferStatus, Prisma } from '@prisma/client';
 
 import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
+import type { CursorPaginationQueryDto } from '../common/pagination/cursor-pagination-query.dto';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
 import type { PaginatedResult } from '../common/pagination/paginated-result.type';
 import { PrismaService } from '../prisma/prisma.service';
@@ -10,6 +11,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { ListCommentsQueryDto } from './dto/list-comments-query.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import type { CommentResponse } from './types/comment-response.type';
+import type { MyComment } from './types/my-comment.type';
 
 type CommentCursor = {
   createdAt: string;
@@ -229,6 +231,61 @@ export class CommentsService {
 
     return {
       items: trimmed.map((comment) => this.toResponse(comment)),
+      nextCursor:
+        hasMore && last
+          ? encodeCursor<CommentCursor>({
+              createdAt: last.createdAt.toISOString(),
+              id: last.id,
+            })
+          : null,
+    };
+  }
+
+  // Comments authored by a given user across every offer, most recent first.
+  // Author-deleted tombstones are excluded; moderator-hidden ones are kept with
+  // a `hidden` flag and their content intact so the author still sees what they
+  // wrote.
+  async findByUser(
+    userId: string,
+    query: CursorPaginationQueryDto,
+  ): Promise<PaginatedResult<MyComment>> {
+    const limit = query.limit ?? 20;
+    const where: Prisma.CommentWhereInput = { userId, deletedAt: null };
+
+    if (query.cursor) {
+      const cursor = decodeCursor<CommentCursor>(query.cursor);
+      where.AND = [
+        {
+          OR: [
+            { createdAt: { lt: new Date(cursor.createdAt) } },
+            { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } },
+          ],
+        },
+      ];
+    }
+
+    const items = await this.prisma.comment.findMany({
+      where,
+      include: { offer: { select: { id: true, title: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    const hasMore = items.length > limit;
+    const trimmed = hasMore ? items.slice(0, limit) : items;
+    const last = trimmed[trimmed.length - 1];
+
+    return {
+      items: trimmed.map((comment) => ({
+        id: comment.id,
+        content: comment.content,
+        createdAt: comment.createdAt,
+        editedAt: comment.editedAt,
+        score: comment.score,
+        replyCount: comment.replyCount,
+        hidden: comment.hiddenAt !== null,
+        offer: comment.offer,
+      })),
       nextCursor:
         hasMore && last
           ? encodeCursor<CommentCursor>({

@@ -51,6 +51,7 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
 type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
   votes?: { type: VoteType }[];
+  categories: { id: string; slug: string; name: string }[];
 };
 
 function buildOfferWithRelations(
@@ -58,11 +59,13 @@ function buildOfferWithRelations(
   relations: {
     createdByUsername?: string;
     votes?: { type: VoteType }[];
+    categories?: { id: string; slug: string; name: string }[];
   } = {},
 ): OfferWithResponseRelations {
   return {
     ...buildOffer(overrides),
     createdBy: { username: relations.createdByUsername ?? 'author' },
+    categories: relations.categories ?? [],
     ...(relations.votes !== undefined && { votes: relations.votes }),
   };
 }
@@ -73,11 +76,14 @@ type PrismaOfferMock = {
   findUnique: jest.Mock;
   findMany: jest.Mock;
   update: jest.Mock;
+  count: jest.Mock;
+  groupBy: jest.Mock;
 };
 
 describe('OffersService', () => {
   let service: OffersService;
   let prismaOffer: PrismaOfferMock;
+  let prismaCategory: { count: jest.Mock; findMany: jest.Mock };
 
   beforeEach(async () => {
     prismaOffer = {
@@ -86,6 +92,12 @@ describe('OffersService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+      groupBy: jest.fn(),
+    };
+    prismaCategory = {
+      count: jest.fn().mockResolvedValue(1),
+      findMany: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -93,7 +105,13 @@ describe('OffersService', () => {
         OffersService,
         {
           provide: PrismaService,
-          useValue: { offer: prismaOffer },
+          useValue: {
+            offer: prismaOffer,
+            category: prismaCategory,
+            $transaction: jest.fn((ops: Promise<unknown>[]) =>
+              Promise.all(ops),
+            ),
+          },
         },
       ],
     }).compile();
@@ -114,6 +132,7 @@ describe('OffersService', () => {
       city: 'Bogotá',
       startDate: futureStart,
       endDate: futureEnd,
+      categoryIds: ['11111111-1111-1111-1111-111111111111'],
     };
 
     it('persists the offer with createdById set to the caller', async () => {
@@ -133,6 +152,10 @@ describe('OffersService', () => {
         }),
         include: {
           createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
           votes: {
             where: { userId: 'user-42' },
             select: { type: true },
@@ -144,7 +167,37 @@ describe('OffersService', () => {
         ...buildOffer({ createdById: 'user-42' }),
         createdByUsername: 'author',
         userVote: null,
+        categories: [],
       });
+    });
+
+    it('connects the (deduped) categories after validating they exist', async () => {
+      prismaOffer.create.mockResolvedValue(buildOfferWithRelations());
+      prismaCategory.count.mockResolvedValue(2);
+
+      await service.create(
+        { ...baseDto, categoryIds: ['cat-a', 'cat-b', 'cat-a'] },
+        'user-1',
+      );
+
+      expect(prismaCategory.count).toHaveBeenCalledWith({
+        where: { id: { in: ['cat-a', 'cat-b'] } },
+      });
+      const call = firstCallArg<{ data: { categories: unknown } }>(
+        prismaOffer.create,
+      );
+      expect(call.data.categories).toEqual({
+        connect: [{ id: 'cat-a' }, { id: 'cat-b' }],
+      });
+    });
+
+    it('throws offer.invalid_category when a category does not exist', async () => {
+      prismaCategory.count.mockResolvedValue(0);
+
+      await expect(
+        service.create({ ...baseDto, categoryIds: ['ghost'] }, 'user-1'),
+      ).rejects.toMatchObject({ key: ErrorKey.OfferInvalidCategory });
+      expect(prismaOffer.create).not.toHaveBeenCalled();
     });
 
     it('throws offer.invalid_dates when startDate is after endDate', async () => {
@@ -186,7 +239,13 @@ describe('OffersService', () => {
           id: 'offer-1',
           status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
         },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
       });
     });
 
@@ -224,7 +283,13 @@ describe('OffersService', () => {
 
       expect(prismaOffer.findFirst).toHaveBeenCalledWith({
         where: { id: 'offer-1', status: { not: OfferStatus.DELETED } },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
       });
     });
 
@@ -244,6 +309,10 @@ describe('OffersService', () => {
         },
         include: {
           createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
           votes: {
             where: { userId: 'viewer-1' },
             select: { type: true },
@@ -319,7 +388,13 @@ describe('OffersService', () => {
       expect(prismaOffer.update).toHaveBeenCalledWith({
         where: { id: 'offer-1' },
         data: { title: 'New' },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
       });
     });
 
@@ -357,7 +432,13 @@ describe('OffersService', () => {
           startDate: new Date('2099-01-01T00:00:00Z'),
           endDate: new Date('2099-12-31T00:00:00Z'),
         },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
       });
       expect(result.createdByUsername).toBe('author');
       expect(result.userVote).toBeNull();
@@ -383,6 +464,10 @@ describe('OffersService', () => {
         objectContaining({
           include: {
             createdBy: { select: { username: true } },
+            categories: {
+              select: { id: true, slug: true, name: true },
+              orderBy: { order: 'asc' },
+            },
             votes: {
               where: { userId: 'viewer-1' },
               select: { type: true },
@@ -429,7 +514,13 @@ describe('OffersService', () => {
 
       expect(prismaOffer.findMany).toHaveBeenCalledWith({
         where: { status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] } },
-        include: { createdBy: { select: { username: true } } },
+        include: {
+          createdBy: { select: { username: true } },
+          categories: {
+            select: { id: true, slug: true, name: true },
+            orderBy: { order: 'asc' },
+          },
+        },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 21,
       });
@@ -592,6 +683,99 @@ describe('OffersService', () => {
 
       const decoded = decodeCursor<DateCursor>(result.nextCursor as string);
       expect(decoded.id).toBe('offer-2');
+    });
+
+    it('applies a free-text search over title, description and store', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({ q: 'sony' } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ where: { OR: unknown[] } }>(
+        prismaOffer.findMany,
+      );
+      expect(call.where.OR).toEqual([
+        { title: { contains: 'sony', mode: 'insensitive' } },
+        { description: { contains: 'sony', mode: 'insensitive' } },
+        { storeName: { contains: 'sony', mode: 'insensitive' } },
+      ]);
+    });
+
+    it('filters by store name', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({ store: 'Carrefour' } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ where: { storeName: string } }>(
+        prismaOffer.findMany,
+      );
+      expect(call.where.storeName).toBe('Carrefour');
+    });
+
+    it('filters by category slug', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({ category: 'technology' } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ where: { categories: unknown } }>(
+        prismaOffer.findMany,
+      );
+      expect(call.where.categories).toEqual({ some: { slug: 'technology' } });
+    });
+
+    it('hides expired offers from the public list when includeExpired=false', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({ includeExpired: false } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ where: { status: unknown } }>(
+        prismaOffer.findMany,
+      );
+      expect(call.where.status).toBe(OfferStatus.ACTIVE);
+    });
+
+    it('orders by soonest-ending with sort=ending', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({
+        sort: OfferSortMode.Ending,
+      } as ListOffersQueryDto);
+
+      const call = firstCallArg<{ orderBy: unknown }>(prismaOffer.findMany);
+      expect(call.orderBy).toEqual([{ endDate: 'asc' }, { id: 'asc' }]);
+    });
+
+    it('returns the total count of matching offers', async () => {
+      prismaOffer.findMany.mockResolvedValue([buildOfferWithRelations()]);
+      prismaOffer.count.mockResolvedValue(42);
+
+      const result = await service.findAll({} as ListOffersQueryDto);
+
+      expect(result.total).toBe(42);
+    });
+  });
+
+  describe('getFacets', () => {
+    it('aggregates cities, stores and category counts over visible offers', async () => {
+      prismaOffer.groupBy
+        .mockResolvedValueOnce([
+          { city: 'Bogotá', _count: 3 },
+          { city: 'Cali', _count: 1 },
+        ])
+        .mockResolvedValueOnce([{ storeName: 'Acme', _count: 4 }]);
+      prismaCategory.findMany.mockResolvedValue([
+        { slug: 'technology', name: 'Technology', _count: { offers: 2 } },
+      ]);
+
+      const result = await service.getFacets();
+
+      expect(result.cities).toEqual([
+        { value: 'Bogotá', count: 3 },
+        { value: 'Cali', count: 1 },
+      ]);
+      expect(result.stores).toEqual([{ value: 'Acme', count: 4 }]);
+      expect(result.categories).toEqual([
+        { slug: 'technology', name: 'Technology', count: 2 },
+      ]);
     });
   });
 });

@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
+import { CategoriesModule } from './categories/categories.module';
 import { CommentsModule } from './comments/comments.module';
 import { authConfig } from './config/auth.config';
 import { commentReportConfig } from './config/comment-report.config';
@@ -41,6 +42,7 @@ import { VotesModule } from './votes/votes.module';
     ReportsModule,
     ModerationModule,
     CommentsModule,
+    CategoriesModule,
   ],
   controllers: [AppController],
   providers: [
