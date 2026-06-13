@@ -17,6 +17,8 @@ export const ErrorKey = {
   OfferInvalidStatusTransition: 'offer.invalid_status_transition',
   OfferInvalidCategory: 'offer.invalid_category',
 
+  StoreNotFound: 'store.not_found',
+
   VoteOfferNotVoteable: 'vote.offer_not_voteable',
 
   ReportOfferNotReportable: 'report.offer_not_reportable',

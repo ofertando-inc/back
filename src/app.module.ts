@@ -15,6 +15,7 @@ import { OffersModule } from './offers/offers.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { reportConfig } from './config/report.config';
 import { ReportsModule } from './reports/reports.module';
+import { StoresModule } from './stores/stores.module';
 import { UsersModule } from './users/users.module';
 import { VotesModule } from './votes/votes.module';
 
@@ -43,6 +44,7 @@ import { VotesModule } from './votes/votes.module';
     ModerationModule,
     CommentsModule,
     CategoriesModule,
+    StoresModule,
   ],
   controllers: [AppController],
   providers: [
