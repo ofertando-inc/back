@@ -9,6 +9,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { CommentsModule } from './comments/comments.module';
 import { authConfig } from './config/auth.config';
 import { commentReportConfig } from './config/comment-report.config';
+import { geocodingConfig } from './config/geocoding.config';
 import { offerExpirationConfig } from './config/offer-expiration.config';
 import { ModerationModule } from './moderation/moderation.module';
 import { OffersModule } from './offers/offers.module';
@@ -28,6 +29,7 @@ import { VotesModule } from './votes/votes.module';
         reportConfig,
         offerExpirationConfig,
         commentReportConfig,
+        geocodingConfig,
       ],
     }),
     ScheduleModule.forRoot(),

@@ -19,6 +19,8 @@ export const ErrorKey = {
 
   StoreNotFound: 'store.not_found',
 
+  GeocodingUnavailable: 'geocoding.unavailable',
+
   VoteOfferNotVoteable: 'vote.offer_not_voteable',
 
   ReportOfferNotReportable: 'report.offer_not_reportable',
