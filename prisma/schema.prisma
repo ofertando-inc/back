@@ -86,6 +86,7 @@ model User {
   commentVotes     CommentVote[]
   commentReports   CommentReport[]
   moderationLogs   ModerationLog[] @relation("ModerationActor")
+  stores           Store[]
 
   @@map("users")
 }
@@ -128,6 +129,8 @@ model Offer {
 
   createdById String
   createdBy   User       @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  storeId     String?
+  store       Store?     @relation(fields: [storeId], references: [id], onDelete: SetNull)
   votes       Vote[]
   reports     Report[]
   comments    Comment[]
@@ -136,7 +139,29 @@ model Offer {
   @@index([status])
   @@index([createdById])
   @@index([city])
+  @@index([storeId])
   @@map("offers")
+}
+
+model Store {
+  id        String   @id @default(uuid())
+  name      String
+  city      String
+  region    String?
+  address   String?
+  latitude  Float?
+  longitude Float?
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdById String?
+  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  offers      Offer[]
+
+  @@index([name])
+  @@index([latitude, longitude])
+  @@map("stores")
 }
 
 model Category {

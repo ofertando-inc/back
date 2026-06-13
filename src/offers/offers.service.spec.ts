@@ -44,6 +44,7 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     disabledAt: null,
     deletedAt: null,
     createdById: 'user-1',
+    storeId: null,
     ...overrides,
   };
 }
