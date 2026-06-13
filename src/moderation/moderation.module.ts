@@ -7,6 +7,7 @@ import { AdminModerationController } from './admin-moderation.controller';
 import { AdminOffersController } from './admin-offers.controller';
 import { AdminReportsController } from './admin-reports.controller';
 import { AdminUsersController } from './admin-users.controller';
+import { ModerationLogService } from './moderation-log.service';
 import { ModerationService } from './moderation.service';
 
 @Module({
@@ -18,6 +19,7 @@ import { ModerationService } from './moderation.service';
     AdminCommentsController,
     AdminModerationController,
   ],
-  providers: [ModerationService],
+  providers: [ModerationService, ModerationLogService],
+  exports: [ModerationLogService],
 })
 export class ModerationModule {}

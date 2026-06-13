@@ -19,6 +19,7 @@ import { ListOffersQueryDto } from '../offers/dto/list-offers-query.dto';
 import { OffersService } from '../offers/offers.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { ModerationLogService } from './moderation-log.service';
 import type { PublicUser } from '../users/types/public-user.type';
 import { ModerationService } from './moderation.service';
 
@@ -194,6 +195,7 @@ describe('ModerationService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ModerationService,
+        ModerationLogService,
         { provide: PrismaService, useValue: prisma },
         { provide: OffersService, useValue: offersService },
         { provide: RefreshTokensService, useValue: refreshTokensService },
