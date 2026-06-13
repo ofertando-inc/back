@@ -6,11 +6,17 @@ import { StoresService } from './stores.service';
 
 describe('StoresService', () => {
   let service: StoresService;
-  let store: { findMany: jest.Mock; findUnique: jest.Mock; create: jest.Mock };
+  let store: {
+    findMany: jest.Mock;
+    findFirst: jest.Mock;
+    findUnique: jest.Mock;
+    create: jest.Mock;
+  };
 
   beforeEach(async () => {
     store = {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       create: jest.fn(),
     };
@@ -25,8 +31,12 @@ describe('StoresService', () => {
     service = module.get(StoresService);
   });
 
+  const visible = {
+    OR: [{ verified: true }, { offers: { some: {} } }],
+  };
+
   describe('search', () => {
-    it('matches name or city, capped and verified first, when q is provided', async () => {
+    it('combines the orphan-hiding filter with the text filter when q is provided', async () => {
       store.findMany.mockResolvedValue([]);
 
       await service.search({ q: 'acme' });
@@ -34,9 +44,14 @@ describe('StoresService', () => {
       expect(store.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
-            OR: [
-              { name: { contains: 'acme', mode: 'insensitive' } },
-              { city: { contains: 'acme', mode: 'insensitive' } },
+            AND: [
+              visible,
+              {
+                OR: [
+                  { name: { contains: 'acme', mode: 'insensitive' } },
+                  { city: { contains: 'acme', mode: 'insensitive' } },
+                ],
+              },
             ],
           },
           orderBy: [{ verified: 'desc' }, { name: 'asc' }],
@@ -45,14 +60,14 @@ describe('StoresService', () => {
       );
     });
 
-    it('omits the text filter when q is absent', async () => {
+    it('hides orphan stores (only verified or already used) when q is absent', async () => {
       store.findMany.mockResolvedValue([]);
 
       await service.search({});
 
       const calls = store.findMany.mock.calls as unknown[][];
       const arg = calls[0]?.[0] as { where: object };
-      expect(arg.where).toEqual({});
+      expect(arg.where).toEqual(visible);
     });
   });
 
@@ -74,11 +89,20 @@ describe('StoresService', () => {
   });
 
   describe('create', () => {
-    it('persists the store as unverified with the author and null-coerced optionals', async () => {
+    it('persists a new store as unverified with the author and null-coerced optionals', async () => {
+      store.findFirst.mockResolvedValue(null);
       store.create.mockResolvedValue({ id: 's1' });
 
       await service.create('user-1', { name: 'Acme', city: 'Bogotá' });
 
+      expect(store.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            name: { equals: 'Acme', mode: 'insensitive' },
+            city: { equals: 'Bogotá', mode: 'insensitive' },
+          },
+        }),
+      );
       expect(store.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: {
@@ -92,6 +116,19 @@ describe('StoresService', () => {
           },
         }),
       );
+    });
+
+    it('reuses an existing store with the same name and city instead of duplicating', async () => {
+      const existing = { id: 's1', name: 'Acme', city: 'Bogotá' };
+      store.findFirst.mockResolvedValue(existing);
+
+      const result = await service.create('user-2', {
+        name: 'Acme',
+        city: 'Bogotá',
+      });
+
+      expect(result).toBe(existing);
+      expect(store.create).not.toHaveBeenCalled();
     });
   });
 });

@@ -20,14 +20,26 @@ export class StoresService {
 
   // Autocomplete over existing stores; verified stores surface first.
   search(query: ListStoresQueryDto): Promise<StoreResponse[]> {
-    const where: Prisma.StoreWhereInput = {};
+    // Hide orphan stores from the picker: only verified ones, or ones already
+    // attached to at least one offer, are suggested. Keeps unverified stores
+    // created during an abandoned offer form out of the autocomplete.
+    const visible: Prisma.StoreWhereInput = {
+      OR: [{ verified: true }, { offers: { some: {} } }],
+    };
 
-    if (query.q) {
-      where.OR = [
-        { name: { contains: query.q, mode: 'insensitive' } },
-        { city: { contains: query.q, mode: 'insensitive' } },
-      ];
-    }
+    const where: Prisma.StoreWhereInput = query.q
+      ? {
+          AND: [
+            visible,
+            {
+              OR: [
+                { name: { contains: query.q, mode: 'insensitive' } },
+                { city: { contains: query.q, mode: 'insensitive' } },
+              ],
+            },
+          ],
+        }
+      : visible;
 
     return this.prisma.store.findMany({
       where,
@@ -50,8 +62,23 @@ export class StoresService {
     return store;
   }
 
-  // Stores created by users start unverified; a moderator verifies them later.
-  create(userId: string, dto: CreateStoreDto): Promise<StoreResponse> {
+  // Find-or-create: reuse an existing store with the same name + city
+  // (case-insensitive) instead of creating a duplicate when several users
+  // geocode the same place during the offer form. New stores start unverified;
+  // a moderator verifies them later.
+  async create(userId: string, dto: CreateStoreDto): Promise<StoreResponse> {
+    const existing = await this.prisma.store.findFirst({
+      where: {
+        name: { equals: dto.name, mode: 'insensitive' },
+        city: { equals: dto.city, mode: 'insensitive' },
+      },
+      select: this.storeSelect,
+    });
+
+    if (existing) {
+      return existing;
+    }
+
     return this.prisma.store.create({
       data: {
         name: dto.name,
