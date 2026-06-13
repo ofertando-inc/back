@@ -683,6 +683,37 @@ describe('OffersService', () => {
       );
     });
 
+    it('applies a store bounding-box filter for near with an explicit radius', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({
+        near: '4.61,-74.08',
+        radiusKm: 5,
+      } as unknown as ListOffersQueryDto);
+
+      const call = firstCallArg<{
+        where: {
+          store: {
+            is: {
+              latitude: { gte: number; lte: number };
+              longitude: { gte: number; lte: number };
+            };
+          };
+        };
+      }>(prismaOffer.findMany);
+      const box = call.where.store.is;
+      expect(box.latitude.gte).toBeCloseTo(4.5651, 3);
+      expect(box.latitude.lte).toBeCloseTo(4.6549, 3);
+      expect(box.longitude.gte).toBeCloseTo(-74.1251, 3);
+      expect(box.longitude.lte).toBeCloseTo(-74.0349, 3);
+    });
+
+    it('rejects out-of-range near coordinates with offer.invalid_near', async () => {
+      await expect(
+        service.findAll({ near: '200,0' } as unknown as ListOffersQueryDto),
+      ).rejects.toMatchObject({ key: ErrorKey.OfferInvalidNear });
+    });
+
     it('applies a createdAt cutoff for period=week', async () => {
       prismaOffer.findMany.mockResolvedValue([]);
       const before = Date.now();

@@ -4,8 +4,10 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -64,6 +66,23 @@ export class ListOffersQueryDto {
   @IsOptional()
   @IsString()
   category?: string;
+
+  // "lat,lng" point for the "near me" filter (e.g. "4.61,-74.08").
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @Matches(/^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/, {
+    message: 'near must be "lat,lng"',
+  })
+  near?: string;
+
+  // Search radius in km for the "near me" filter (defaults to 10 when omitted).
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.1)
+  @Max(500)
+  radiusKm?: number;
 
   @IsOptional()
   @IsString()

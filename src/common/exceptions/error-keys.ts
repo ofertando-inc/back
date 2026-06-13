@@ -16,6 +16,7 @@ export const ErrorKey = {
   OfferInvalidDates: 'offer.invalid_dates',
   OfferInvalidStatusTransition: 'offer.invalid_status_transition',
   OfferInvalidCategory: 'offer.invalid_category',
+  OfferInvalidNear: 'offer.invalid_near',
 
   StoreNotFound: 'store.not_found',
   StoreMergeInvalid: 'store.merge_invalid',

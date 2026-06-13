@@ -24,10 +24,52 @@ import type { OfferResponse } from './types/offer-response.type';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Default search radius for the "near me" filter when none is supplied.
+const DEFAULT_NEAR_RADIUS_KM = 10;
+const KM_PER_DEGREE_LAT = 111.32;
+
 // Facets reflect the publicly listable offers.
 const VISIBLE_OFFER = {
   status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
 } satisfies Prisma.OfferWhereInput;
+
+// Parses a "lat,lng" pair, rejecting malformed or out-of-range coordinates.
+function parseNearParam(near: string): { latitude: number; longitude: number } {
+  const [latRaw, lngRaw] = near.split(',');
+  const latitude = Number(latRaw);
+  const longitude = Number(lngRaw);
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    throw new AppException(ErrorKey.OfferInvalidNear, HttpStatus.BAD_REQUEST);
+  }
+
+  return { latitude, longitude };
+}
+
+// Square bounding box (degrees) around a point for a given radius in km. A fast,
+// index-friendly approximation of a circle; exact distance (Haversine/PostGIS)
+// is a planned evolution.
+function boundingBox(latitude: number, longitude: number, radiusKm: number) {
+  const latDelta = radiusKm / KM_PER_DEGREE_LAT;
+  const lngDelta = Math.min(
+    radiusKm / (KM_PER_DEGREE_LAT * Math.cos((latitude * Math.PI) / 180)),
+    180,
+  );
+
+  return {
+    minLat: latitude - latDelta,
+    maxLat: latitude + latDelta,
+    minLng: longitude - lngDelta,
+    maxLng: longitude + lngDelta,
+  };
+}
 
 type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
@@ -401,6 +443,22 @@ export class OffersService {
     }
     if (query.category) {
       where.categories = { some: { slug: query.category } };
+    }
+    if (query.near) {
+      const { latitude, longitude } = parseNearParam(query.near);
+      const box = boundingBox(
+        latitude,
+        longitude,
+        query.radiusKm ?? DEFAULT_NEAR_RADIUS_KM,
+      );
+      // Restrict to offers whose linked, geolocated store sits in the box.
+      // Offers without a geolocated store are naturally excluded.
+      where.store = {
+        is: {
+          latitude: { gte: box.minLat, lte: box.maxLat },
+          longitude: { gte: box.minLng, lte: box.maxLng },
+        },
+      };
     }
 
     if (query.q) {
