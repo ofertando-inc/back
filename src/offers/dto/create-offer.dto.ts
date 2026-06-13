@@ -62,4 +62,9 @@ export class CreateOfferDto {
   @ArrayUnique()
   @IsUUID('all', { each: true })
   categoryIds: string[];
+
+  // Optional link to an existing store (from GET /stores autocomplete).
+  @IsOptional()
+  @IsUUID()
+  storeId?: string;
 }

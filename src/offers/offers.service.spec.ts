@@ -85,6 +85,7 @@ describe('OffersService', () => {
   let service: OffersService;
   let prismaOffer: PrismaOfferMock;
   let prismaCategory: { count: jest.Mock; findMany: jest.Mock };
+  let prismaStore: { findUnique: jest.Mock };
 
   beforeEach(async () => {
     prismaOffer = {
@@ -100,6 +101,7 @@ describe('OffersService', () => {
       count: jest.fn().mockResolvedValue(1),
       findMany: jest.fn(),
     };
+    prismaStore = { findUnique: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -109,6 +111,7 @@ describe('OffersService', () => {
           useValue: {
             offer: prismaOffer,
             category: prismaCategory,
+            store: prismaStore,
             $transaction: jest.fn((ops: Promise<unknown>[]) =>
               Promise.all(ops),
             ),
@@ -157,6 +160,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              verified: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
           votes: {
             where: { userId: 'user-42' },
             select: { type: true },
@@ -198,6 +211,32 @@ describe('OffersService', () => {
       await expect(
         service.create({ ...baseDto, categoryIds: ['ghost'] }, 'user-1'),
       ).rejects.toMatchObject({ key: ErrorKey.OfferInvalidCategory });
+      expect(prismaOffer.create).not.toHaveBeenCalled();
+    });
+
+    it('links a store when storeId is provided and it exists', async () => {
+      prismaStore.findUnique.mockResolvedValue({ id: 'store-1' });
+      prismaOffer.create.mockResolvedValue(buildOfferWithRelations());
+
+      await service.create({ ...baseDto, storeId: 'store-1' }, 'user-1');
+
+      expect(prismaStore.findUnique).toHaveBeenCalledWith({
+        where: { id: 'store-1' },
+        select: { id: true },
+      });
+      expect(prismaOffer.create).toHaveBeenCalledWith(
+        objectContaining({
+          data: objectContaining({ storeId: 'store-1' }),
+        }),
+      );
+    });
+
+    it('throws store.not_found when storeId does not exist', async () => {
+      prismaStore.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.create({ ...baseDto, storeId: 'ghost' }, 'user-1'),
+      ).rejects.toMatchObject({ key: ErrorKey.StoreNotFound });
       expect(prismaOffer.create).not.toHaveBeenCalled();
     });
 
@@ -246,6 +285,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              verified: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
         },
       });
     });
@@ -290,6 +339,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              verified: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
         },
       });
     });
@@ -313,6 +372,16 @@ describe('OffersService', () => {
           categories: {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
+          },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              verified: true,
+              latitude: true,
+              longitude: true,
+            },
           },
           votes: {
             where: { userId: 'viewer-1' },
@@ -395,6 +464,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              verified: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
         },
       });
     });
@@ -439,6 +518,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              verified: true,
+              latitude: true,
+              longitude: true,
+            },
+          },
         },
       });
       expect(result.createdByUsername).toBe('author');
@@ -468,6 +557,16 @@ describe('OffersService', () => {
             categories: {
               select: { id: true, slug: true, name: true },
               orderBy: { order: 'asc' },
+            },
+            store: {
+              select: {
+                id: true,
+                name: true,
+                city: true,
+                verified: true,
+                latitude: true,
+                longitude: true,
+              },
             },
             votes: {
               where: { userId: 'viewer-1' },
@@ -520,6 +619,16 @@ describe('OffersService', () => {
           categories: {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
+          },
+          store: {
+            select: {
+              id: true,
+              name: true,
+              city: true,
+              verified: true,
+              latitude: true,
+              longitude: true,
+            },
           },
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

@@ -33,6 +33,14 @@ type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
   votes?: { type: VoteType }[];
   categories: { id: string; slug: string; name: string }[];
+  store: {
+    id: string;
+    name: string;
+    city: string;
+    verified: boolean;
+    latitude: number | null;
+    longitude: number | null;
+  } | null;
 };
 
 @Injectable()
@@ -47,6 +55,10 @@ export class OffersService {
     this.assertEndInFuture(endDate);
     const categoryIds = await this.resolveCategoryIds(dto.categoryIds);
 
+    if (dto.storeId !== undefined) {
+      await this.assertStoreExists(dto.storeId);
+    }
+
     const offer = await this.prisma.offer.create({
       data: {
         title: dto.title,
@@ -58,6 +70,7 @@ export class OffersService {
         startDate,
         endDate,
         createdById: userId,
+        storeId: dto.storeId ?? null,
         categories: { connect: categoryIds.map((id) => ({ id })) },
       },
       include: this.buildOfferResponseInclude(userId),
@@ -79,6 +92,17 @@ export class OffersService {
       );
     }
     return ids;
+  }
+
+  // Ensures a linked store exists before attaching it to an offer.
+  private async assertStoreExists(storeId: string): Promise<void> {
+    const store = await this.prisma.store.findUnique({
+      where: { id: storeId },
+      select: { id: true },
+    });
+    if (!store) {
+      throw new AppException(ErrorKey.StoreNotFound, HttpStatus.NOT_FOUND);
+    }
   }
 
   async findById(
@@ -231,6 +255,10 @@ export class OffersService {
         ? await this.resolveCategoryIds(dto.categoryIds)
         : undefined;
 
+    if (dto.storeId !== undefined) {
+      await this.assertStoreExists(dto.storeId);
+    }
+
     const updated = await this.prisma.offer.update({
       where: { id },
       data: {
@@ -244,6 +272,7 @@ export class OffersService {
           startDate: new Date(dto.startDate),
         }),
         ...(dto.endDate !== undefined && { endDate: new Date(dto.endDate) }),
+        ...(dto.storeId !== undefined && { storeId: dto.storeId }),
         ...(categoryIds !== undefined && {
           categories: { set: categoryIds.map((id) => ({ id })) },
         }),
@@ -302,6 +331,16 @@ export class OffersService {
         select: { id: true, slug: true, name: true },
         orderBy: { order: 'asc' },
       },
+      store: {
+        select: {
+          id: true,
+          name: true,
+          city: true,
+          verified: true,
+          latitude: true,
+          longitude: true,
+        },
+      },
     };
 
     if (viewerId) {
@@ -316,13 +355,14 @@ export class OffersService {
   }
 
   private toOfferResponse(offer: OfferWithResponseRelations): OfferResponse {
-    const { createdBy, votes, categories, ...payload } = offer;
+    const { createdBy, votes, categories, store, ...payload } = offer;
 
     return {
       ...payload,
       createdByUsername: createdBy.username,
       userVote: votes?.[0]?.type ?? null,
       categories,
+      store,
     };
   }
 

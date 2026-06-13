@@ -97,6 +97,7 @@ function buildOfferResponse(
     createdByUsername: 'author',
     userVote: null,
     categories: [],
+    store: null,
     ...overrides,
   };
 }
