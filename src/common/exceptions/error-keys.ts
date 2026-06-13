@@ -18,6 +18,7 @@ export const ErrorKey = {
   OfferInvalidCategory: 'offer.invalid_category',
 
   StoreNotFound: 'store.not_found',
+  StoreMergeInvalid: 'store.merge_invalid',
 
   GeocodingUnavailable: 'geocoding.unavailable',
 

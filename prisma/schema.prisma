@@ -60,12 +60,15 @@ enum ModerationAction {
   RESTORE_OFFER
   DISABLE_USER
   RESTORE_USER
+  VERIFY_STORE
+  MERGE_STORE
 }
 
 enum ModerationTargetType {
   COMMENT
   OFFER
   USER
+  STORE
 }
 
 model User {

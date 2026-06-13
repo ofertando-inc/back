@@ -6,6 +6,7 @@ import { ErrorKey } from '../common/exceptions/error-keys';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStoreDto } from './dto/create-store.dto';
 import { ListStoresQueryDto } from './dto/list-stores-query.dto';
+import { storeResponseSelect } from './store-response.select';
 import type { StoreResponse } from './types/store-response.type';
 
 // Cap on autocomplete results: enough to populate a dropdown without paginating.
@@ -13,17 +14,7 @@ const SEARCH_LIMIT = 20;
 
 @Injectable()
 export class StoresService {
-  private readonly storeSelect = {
-    id: true,
-    name: true,
-    city: true,
-    region: true,
-    address: true,
-    latitude: true,
-    longitude: true,
-    verified: true,
-    createdAt: true,
-  } satisfies Prisma.StoreSelect;
+  private readonly storeSelect = storeResponseSelect;
 
   constructor(private readonly prisma: PrismaService) {}
 
