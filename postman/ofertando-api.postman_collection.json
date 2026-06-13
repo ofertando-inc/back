@@ -295,6 +295,127 @@
       ]
     },
     {
+      "name": "Stores",
+      "item": [
+        {
+          "name": "List stores",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/stores?q=acme",
+              "host": ["{{baseUrl}}"],
+              "path": ["stores"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "acme",
+                  "description": "autocomplete over store name and city (verified first, max 20)"
+                }
+              ]
+            },
+            "description": "Public. Returns StoreResponse[] for the offer-creation store picker."
+          },
+          "response": []
+        },
+        {
+          "name": "Create store",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "if (b && b.id) { pm.environment.set('storeId', b.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Store\",\n  \"city\": \"Bogotá\",\n  \"region\": \"Cundinamarca\",\n  \"address\": \"Carrera 7 #1-23\",\n  \"latitude\": 4.61,\n  \"longitude\": -74.08\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/stores",
+              "host": ["{{baseUrl}}"],
+              "path": ["stores"]
+            },
+            "description": "Authenticated. Creates an unverified store (verified=false) and captures storeId. lat/lng optional (-90..90 / -180..180)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get store",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/stores/{{storeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["stores", "{{storeId}}"]
+            },
+            "description": "Public. 404 store.not_found when missing."
+          },
+          "response": []
+        },
+        {
+          "name": "Geocode address",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/stores/geocode?q=carrera 7 bogota",
+              "host": ["{{baseUrl}}"],
+              "path": ["stores", "geocode"],
+              "query": [{ "key": "q", "value": "carrera 7 bogota" }]
+            },
+            "description": "Authenticated. Nominatim/OSM suggestions [{ displayName, latitude, longitude, city, region, address }]. q >= 3 chars. geocoding.unavailable on upstream failure."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify store (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"verified by phone\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/stores/{{storeId}}/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "stores", "{{storeId}}", "verify"]
+            },
+            "description": "JWT + ADMIN. Sets verified=true; logs VERIFY_STORE. Body { reason?, note? } optional."
+          },
+          "response": []
+        },
+        {
+          "name": "Merge stores (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceId\": \"{{storeId}}\",\n  \"targetId\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/stores/merge",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "stores", "merge"]
+            },
+            "description": "JWT + ADMIN. Reassigns the source's offers to the target then deletes the source; logs MERGE_STORE. store.merge_invalid if sourceId == targetId."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Offers",
       "item": [
         {
@@ -352,6 +473,18 @@
                   "key": "offerType",
                   "value": "",
                   "disabled": true
+                },
+                {
+                  "key": "near",
+                  "value": "4.61,-74.08",
+                  "disabled": true,
+                  "description": "\"lat,lng\" point; keeps only offers whose geolocated store is within radiusKm"
+                },
+                {
+                  "key": "radiusKm",
+                  "value": "10",
+                  "disabled": true,
+                  "description": "search radius in km for ?near (default 10, max 500)"
                 },
                 {
                   "key": "includeExpired",
@@ -483,7 +616,8 @@
               "path": [
                 "offers"
               ]
-            }
+            },
+            "description": "Optional `storeId` (UUID of an existing store) links the offer to a store; OfferResponse then embeds `store`. Invalid id -> store.not_found."
           },
           "response": []
         },

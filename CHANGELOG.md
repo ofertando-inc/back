@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Added a `Store` model (`name`, `city`, `region?`, `address?`, `latitude?`, `longitude?`, `verified`, `createdById?`) and a nullable `Offer.storeId` link (FK `ON DELETE SET NULL`); the existing `storeName`/`city` fields are kept for compatibility
+- Added a stores module: `GET /stores?q=` (public autocomplete over name and city, verified first), `GET /stores/:id` (public, `store.not_found` when missing) and `POST /stores` (authenticated, created `verified: false`)
+- `POST /stores` is find-or-create: it reuses an existing store with the same name + city (case-insensitive) instead of duplicating when several users geocode the same place during the offer form; and `GET /stores?q=` hides orphan stores, suggesting only verified ones or those already attached to an offer
+- `POST`/`PATCH /offers` now accept an optional `storeId` (validated against existing stores — `store.not_found` otherwise); `OfferResponse` embeds `store: { id, name, city, verified, latitude, longitude } | null`
+- Added `GET /stores/geocode?q=` (authenticated) returning Nominatim/OSM geocoded suggestions via a configurable `GeocodingService` (base URL, identifying User-Agent, throttle, timeout, in-memory cache; native `fetch`, no new dependency); upstream failures surface as `geocoding.unavailable`
+- Added admin store moderation (`JwtAuthGuard + AdminGuard`): `PATCH /admin/stores/:id/verify` and `POST /admin/stores/merge` (reassigns the source's offers to the target then deletes the duplicate; `store.merge_invalid` on a self-merge), both recorded in the moderation log via new `VERIFY_STORE` / `MERGE_STORE` actions and a `STORE` target type
+- Extracted a reusable `ModerationLogService` from `ModerationService` (no behaviour change) so admin actions outside the moderation module can record log entries atomically
+- Added a `near=<lat,lng>&radiusKm=` filter to `GET /offers` (default radius 10 km, max 500) that keeps only offers whose geolocated store is within range, preserving the existing `sort`, cursor and `total`; out-of-range coordinates return `offer.invalid_near`. Uses an indexed bounding-box approximation (exact distance via Haversine/PostGIS is a planned evolution)
+- Added the geocoding environment variables (`GEOCODING_BASE_URL`, `GEOCODING_USER_AGENT`, `GEOCODING_LIMIT`, `GEOCODING_TIMEOUT_MS`, `GEOCODING_THROTTLE_MS`, `GEOCODING_CACHE_TTL_MS`) to `.env.example` and every compose file, with safe defaults
+
 ## [1.0.0] - 2026-06-12
 
 ### Added
@@ -274,6 +288,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[Unreleased]: https://github.com/ofertando-inc/back/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/ofertando-inc/back/releases/tag/v1.0.0
 [0.9.0]: https://github.com/ofertando-inc/back/releases/tag/v0.9.0
 [0.8.0]: https://github.com/ofertando-inc/back/releases/tag/v0.8.0
