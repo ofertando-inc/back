@@ -1,6 +1,14 @@
 import { Client } from 'pg';
 
-const TABLES_TO_TRUNCATE = ['reports', 'votes', 'offers', 'users'] as const;
+// 'merchants' cascades to locations and offers; truncating it keeps the
+// merchant/location tables clean between tests (they have no FK to users).
+const TABLES_TO_TRUNCATE = [
+  'reports',
+  'votes',
+  'offers',
+  'users',
+  'merchants',
+] as const;
 
 export async function resetTestDatabase() {
   const databaseUrl = process.env.DATABASE_URL;

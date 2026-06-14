@@ -19,6 +19,7 @@ import { ListOffersQueryDto } from '../offers/dto/list-offers-query.dto';
 import { OffersService } from '../offers/offers.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { ModerationLogService } from './moderation-log.service';
 import type { PublicUser } from '../users/types/public-user.type';
 import { ModerationService } from './moderation.service';
 
@@ -58,7 +59,6 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     description: 'Description',
     offerType: 'discount',
     externalUrl: null,
-    storeName: 'Store',
     city: 'Bogotá',
     startDate: new Date('2024-01-01T00:00:00Z'),
     endDate: new Date('2099-01-01T00:00:00Z'),
@@ -71,6 +71,9 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     disabledAt: null,
     deletedAt: null,
     createdById: 'author-1',
+    merchantId: 'merchant-1',
+    locationId: null,
+    isOnline: false,
     ...overrides,
   };
 }
@@ -96,6 +99,8 @@ function buildOfferResponse(
     createdByUsername: 'author',
     userVote: null,
     categories: [],
+    merchant: { id: 'merchant-1', name: 'Acme', verified: false },
+    location: null,
     ...overrides,
   };
 }
@@ -192,6 +197,7 @@ describe('ModerationService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ModerationService,
+        ModerationLogService,
         { provide: PrismaService, useValue: prisma },
         { provide: OffersService, useValue: offersService },
         { provide: RefreshTokensService, useValue: refreshTokensService },

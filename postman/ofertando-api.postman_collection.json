@@ -295,6 +295,163 @@
       ]
     },
     {
+      "name": "Merchants",
+      "item": [
+        {
+          "name": "List merchants",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/merchants?q=acme",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchants"],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "acme",
+                  "description": "autocomplete over merchant name (accent/case-insensitive); verified or already-used only, verified first, max 20"
+                }
+              ]
+            },
+            "description": "Public. Returns MerchantResponse[] for the offer-creation merchant picker."
+          },
+          "response": []
+        },
+        {
+          "name": "Create merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "if (b && b.id) { pm.environment.set('merchantId', b.id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/merchants",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchants"]
+            },
+            "description": "Authenticated. Find-or-create on the normalized name (accent/case-insensitive); new merchants are verified=false. Captures merchantId."
+          },
+          "response": []
+        },
+        {
+          "name": "Get merchant",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/merchants/{{merchantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["merchants", "{{merchantId}}"]
+            },
+            "description": "Public. 404 merchant.not_found when missing."
+          },
+          "response": []
+        },
+        {
+          "name": "Geocode address",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/geocode?q=carrera 7 bogota",
+              "host": ["{{baseUrl}}"],
+              "path": ["geocode"],
+              "query": [{ "key": "q", "value": "carrera 7 bogota" }]
+            },
+            "description": "Authenticated. Nominatim/OSM suggestions [{ displayName, latitude, longitude, city, region, address }] (restricted to GEOCODING_COUNTRY_CODES). q >= 3 chars. geocoding.unavailable on upstream failure."
+          },
+          "response": []
+        },
+        {
+          "name": "Reverse geocode",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/geocode/reverse?lat=4.61&lng=-74.08",
+              "host": ["{{baseUrl}}"],
+              "path": ["geocode", "reverse"],
+              "query": [
+                { "key": "lat", "value": "4.61" },
+                { "key": "lng", "value": "-74.08" }
+              ]
+            },
+            "description": "Authenticated. Coordinates -> a single GeocodeSuggestion (or null), to refresh the text address when the map pin moves."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify merchant (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"known brand\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "merchants", "{{merchantId}}", "verify"]
+            },
+            "description": "JWT + ADMIN. Sets the merchant verified=true; logs VERIFY_MERCHANT. Body { reason?, note? } optional."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify location (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"address confirmed\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/locations/{{locationId}}/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "locations", "{{locationId}}", "verify"]
+            },
+            "description": "JWT + ADMIN. Sets the location verified=true; logs VERIFY_LOCATION. Body { reason?, note? } optional."
+          },
+          "response": []
+        },
+        {
+          "name": "Merge merchants (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceId\": \"{{merchantId}}\",\n  \"targetId\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/merchants/merge",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "merchants", "merge"]
+            },
+            "description": "JWT + ADMIN. Moves the source's locations and offers to the target then deletes the source; logs MERGE_MERCHANT. merchant.merge_invalid if sourceId == targetId."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Offers",
       "item": [
         {
@@ -329,18 +486,19 @@
                   "key": "q",
                   "value": "",
                   "disabled": true,
-                  "description": "free-text search over title, description and store"
+                  "description": "free-text search over title, description and merchant name"
                 },
                 {
                   "key": "city",
                   "value": "",
-                  "disabled": true
+                  "disabled": true,
+                  "description": "filter by city (derived from the offer location)"
                 },
                 {
-                  "key": "store",
+                  "key": "merchant",
                   "value": "",
                   "disabled": true,
-                  "description": "exact store name filter"
+                  "description": "filter by merchant id"
                 },
                 {
                   "key": "category",
@@ -354,10 +512,28 @@
                   "disabled": true
                 },
                 {
+                  "key": "near",
+                  "value": "4.61,-74.08",
+                  "disabled": true,
+                  "description": "\"lat,lng\" point; keeps only offers whose geolocated store is within radiusKm"
+                },
+                {
+                  "key": "radiusKm",
+                  "value": "10",
+                  "disabled": true,
+                  "description": "search radius in km for ?near (default 10, max 500)"
+                },
+                {
                   "key": "includeExpired",
                   "value": "false",
                   "disabled": true,
                   "description": "set false to hide expired offers (default: shown)"
+                },
+                {
+                  "key": "online",
+                  "value": "true",
+                  "disabled": true,
+                  "description": "true = online-only offers, false = physical ones (absent = both)"
                 },
                 {
                   "key": "cursor",
@@ -473,7 +649,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Big discount at Acme\",\n  \"description\": \"50% off on selected items this week only\",\n  \"offerType\": \"discount\",\n  \"externalUrl\": \"https://example.com/promo\",\n  \"storeName\": \"Acme Store\",\n  \"city\": \"Bogotá\",\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\",\n  \"categoryIds\": [\"{{categoryId}}\"]\n}"
+              "raw": "{\n  \"title\": \"Big discount at Acme\",\n  \"description\": \"50% off on selected items this week only\",\n  \"offerType\": \"discount\",\n  \"externalUrl\": \"https://example.com/promo\",\n  \"merchantName\": \"Acme\",\n  \"location\": { \"address\": \"Carrera 7 #1-23\", \"city\": \"Bogotá\", \"latitude\": 4.61, \"longitude\": -74.08 },\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\",\n  \"categoryIds\": [\"{{categoryId}}\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/offers",
@@ -483,7 +659,8 @@
               "path": [
                 "offers"
               ]
-            }
+            },
+            "description": "Merchant: `merchantId` (existing, merchant.not_found if unknown) OR `merchantName` (find-or-create). Physical offers need a `locationId` (existing) OR an inline `location { address, city, region?, latitude?, longitude? }` (find-or-create) else offer.location_required; `city` is derived from the location. Set `isOnline: true` for an online-only offer: location is omitted and `externalUrl` becomes required (offer.online_requires_url otherwise). OfferResponse embeds `merchant` and `location`."
           },
           "response": []
         },
@@ -533,7 +710,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Short-lived deal\",\n  \"description\": \"This offer expires one minute after creation, for testing expiration\",\n  \"offerType\": \"discount\",\n  \"storeName\": \"Acme Store\",\n  \"city\": \"Bogotá\",\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\"\n}"
+              "raw": "{\n  \"title\": \"Short-lived deal\",\n  \"description\": \"This offer expires one minute after creation, for testing expiration\",\n  \"offerType\": \"discount\",\n  \"merchantName\": \"Acme\",\n  \"location\": { \"address\": \"Carrera 7 #1-23\", \"city\": \"Bogotá\" },\n  \"startDate\": \"{{offerStartDate}}\",\n  \"endDate\": \"{{offerEndDate}}\",\n  \"categoryIds\": [\"{{categoryId}}\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/offers",

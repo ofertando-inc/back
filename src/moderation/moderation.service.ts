@@ -27,6 +27,7 @@ import { ListReportedCommentsQueryDto } from './dto/list-reported-comments-query
 import { ListReportsQueryDto } from './dto/list-reports-query.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { ModerationDecisionDto } from './dto/moderation-decision.dto';
+import { ModerationLogService } from './moderation-log.service';
 import type { AdminUserDetail } from './types/admin-user-detail.type';
 import type { CommentModerationSummary } from './types/comment-moderation-summary.type';
 import type { ModerationLogEntry } from './types/moderation-log-entry.type';
@@ -76,6 +77,7 @@ export class ModerationService {
     private readonly offersService: OffersService,
     private readonly refreshTokensService: RefreshTokensService,
     private readonly configService: ConfigService,
+    private readonly moderationLog: ModerationLogService,
   ) {}
 
   listOffers(
@@ -794,8 +796,8 @@ export class ModerationService {
     return this.findCommentSummary(commentId);
   }
 
-  // Builds a moderation-log create to push into an action's transaction, so the
-  // decision (actor, reason, note) is recorded atomically with its effect.
+  // Delegates to the shared ModerationLogService; kept as a thin wrapper so the
+  // existing call sites stay unchanged.
   private logEntry(
     actorId: string,
     action: ModerationAction,
@@ -803,16 +805,13 @@ export class ModerationService {
     targetId: string,
     decision?: ModerationDecisionDto,
   ): Prisma.PrismaPromise<unknown> {
-    return this.prisma.moderationLog.create({
-      data: {
-        actorId,
-        action,
-        targetType,
-        targetId,
-        reason: decision?.reason ?? null,
-        note: decision?.note ?? null,
-      },
-    });
+    return this.moderationLog.entry(
+      actorId,
+      action,
+      targetType,
+      targetId,
+      decision,
+    );
   }
 
   private async findCommentSummary(
