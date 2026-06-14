@@ -7,6 +7,7 @@ import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
 import type { PaginatedResult } from '../common/pagination/paginated-result.type';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReputationService } from '../reputation/reputation.service';
 import type { MyVote } from './types/my-vote.type';
 import { VoteResponse } from './types/vote-response.type';
 
@@ -19,9 +20,16 @@ function voteWeight(type: VoteType): number {
   return type === VoteType.UP ? 1 : -1;
 }
 
+function isUp(type: VoteType | null): number {
+  return type === VoteType.UP ? 1 : 0;
+}
+
 @Injectable()
 export class VotesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reputation: ReputationService,
+  ) {}
 
   async cast(
     userId: string,
@@ -70,6 +78,19 @@ export class VotesService {
         data: { score: { increment: scoreDelta } },
       });
 
+      // Reward the offer's author for the net change in this user's upvote
+      // (not for self-votes).
+      const repDelta =
+        this.reputation.points('offerUpvote') *
+        (isUp(type) - isUp(existing?.type ?? null));
+      if (repDelta !== 0 && offer.createdById !== userId) {
+        await this.reputation.applyWithin(tx, offer.createdById, repDelta, {
+          reason: 'offerUpvote',
+          sourceType: 'offer_vote',
+          sourceId: offerId,
+        });
+      }
+
       return { score: updated.score, userVote: type };
     });
   }
@@ -106,6 +127,20 @@ export class VotesService {
         where: { id: offerId },
         data: { score: { decrement: voteWeight(existing.type) } },
       });
+
+      // Removing an upvote takes back the author's reward (not for self-votes).
+      if (existing.type === VoteType.UP && offer.createdById !== userId) {
+        await this.reputation.applyWithin(
+          tx,
+          offer.createdById,
+          -this.reputation.points('offerUpvote'),
+          {
+            reason: 'offerUpvote',
+            sourceType: 'offer_vote',
+            sourceId: offerId,
+          },
+        );
+      }
 
       return { score: updated.score, userVote: null };
     });
