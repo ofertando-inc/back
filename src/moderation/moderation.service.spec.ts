@@ -101,7 +101,12 @@ function buildOfferResponse(
     createdByUsername: 'author',
     userVote: null,
     categories: [],
-    merchant: { id: 'merchant-1', name: 'Acme', verified: false },
+    merchant: {
+      id: 'merchant-1',
+      name: 'Acme',
+      verified: false,
+      blocked: false,
+    },
     location: null,
     ...overrides,
   };

@@ -22,7 +22,9 @@ export const ErrorKey = {
 
   MerchantNotFound: 'merchant.not_found',
   MerchantMergeInvalid: 'merchant.merge_invalid',
+  MerchantNameTaken: 'merchant.name_taken',
   LocationNotFound: 'location.not_found',
+  LocationInUse: 'location.in_use',
 
   GeocodingUnavailable: 'geocoding.unavailable',
 

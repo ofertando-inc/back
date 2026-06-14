@@ -56,7 +56,12 @@ type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
   votes?: { type: VoteType }[];
   categories: { id: string; slug: string; name: string }[];
-  merchant: { id: string; name: string; verified: boolean };
+  merchant: {
+    id: string;
+    name: string;
+    verified: boolean;
+    blockedAt: Date | null;
+  };
   location: {
     id: string;
     address: string;
@@ -80,7 +85,12 @@ function buildOfferWithRelations(
     ...buildOffer(overrides),
     createdBy: { username: relations.createdByUsername ?? 'author' },
     categories: relations.categories ?? [],
-    merchant: { id: 'merchant-1', name: 'Acme', verified: false },
+    merchant: {
+      id: 'merchant-1',
+      name: 'Acme',
+      verified: false,
+      blockedAt: null,
+    },
     location: null,
     ...(relations.votes !== undefined && { votes: relations.votes }),
   };
@@ -193,7 +203,9 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          merchant: { select: { id: true, name: true, verified: true } },
+          merchant: {
+            select: { id: true, name: true, verified: true, blockedAt: true },
+          },
           location: {
             select: {
               id: true,
@@ -217,7 +229,12 @@ describe('OffersService', () => {
         createdByUsername: 'author',
         userVote: null,
         categories: [],
-        merchant: { id: 'merchant-1', name: 'Acme', verified: false },
+        merchant: {
+          id: 'merchant-1',
+          name: 'Acme',
+          verified: false,
+          blocked: false,
+        },
         location: null,
       });
     });
@@ -384,6 +401,7 @@ describe('OffersService', () => {
         where: {
           id: 'offer-1',
           status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+          merchant: { blockedAt: null },
         },
         include: {
           createdBy: { select: { username: true } },
@@ -391,7 +409,9 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          merchant: { select: { id: true, name: true, verified: true } },
+          merchant: {
+            select: { id: true, name: true, verified: true, blockedAt: true },
+          },
           location: {
             select: {
               id: true,
@@ -447,7 +467,9 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          merchant: { select: { id: true, name: true, verified: true } },
+          merchant: {
+            select: { id: true, name: true, verified: true, blockedAt: true },
+          },
           location: {
             select: {
               id: true,
@@ -476,6 +498,7 @@ describe('OffersService', () => {
         where: {
           id: 'offer-1',
           status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+          merchant: { blockedAt: null },
         },
         include: {
           createdBy: { select: { username: true } },
@@ -483,7 +506,9 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          merchant: { select: { id: true, name: true, verified: true } },
+          merchant: {
+            select: { id: true, name: true, verified: true, blockedAt: true },
+          },
           location: {
             select: {
               id: true,
@@ -576,7 +601,9 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          merchant: { select: { id: true, name: true, verified: true } },
+          merchant: {
+            select: { id: true, name: true, verified: true, blockedAt: true },
+          },
           location: {
             select: {
               id: true,
@@ -667,7 +694,9 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          merchant: { select: { id: true, name: true, verified: true } },
+          merchant: {
+            select: { id: true, name: true, verified: true, blockedAt: true },
+          },
           location: {
             select: {
               id: true,
@@ -709,7 +738,9 @@ describe('OffersService', () => {
               select: { id: true, slug: true, name: true },
               orderBy: { order: 'asc' },
             },
-            merchant: { select: { id: true, name: true, verified: true } },
+            merchant: {
+              select: { id: true, name: true, verified: true, blockedAt: true },
+            },
             location: {
               select: {
                 id: true,
@@ -766,14 +797,19 @@ describe('OffersService', () => {
       await service.findAll({} as ListOffersQueryDto);
 
       expect(prismaOffer.findMany).toHaveBeenCalledWith({
-        where: { status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] } },
+        where: {
+          status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+          merchant: { blockedAt: null },
+        },
         include: {
           createdBy: { select: { username: true } },
           categories: {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          merchant: { select: { id: true, name: true, verified: true } },
+          merchant: {
+            select: { id: true, name: true, verified: true, blockedAt: true },
+          },
           location: {
             select: {
               id: true,
@@ -815,7 +851,10 @@ describe('OffersService', () => {
 
       expect(prismaOffer.findMany).toHaveBeenCalledWith(
         objectContaining({
-          where: { status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] } },
+          where: {
+            status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+            merchant: { blockedAt: null },
+          },
         }),
       );
     });

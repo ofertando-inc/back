@@ -19,6 +19,7 @@ export class MerchantsService {
   // already attached to an offer), verified first.
   search(query: ListMerchantsQueryDto): Promise<MerchantResponse[]> {
     const visible: Prisma.MerchantWhereInput = {
+      blockedAt: null,
       OR: [{ verified: true }, { offers: { some: {} } }],
     };
 

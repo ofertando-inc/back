@@ -63,6 +63,8 @@ enum ModerationAction {
   VERIFY_MERCHANT
   VERIFY_LOCATION
   MERGE_MERCHANT
+  BLOCK_MERCHANT
+  UNBLOCK_MERCHANT
 }
 
 enum ModerationTargetType {
@@ -167,12 +169,13 @@ model Offer {
 }
 
 model Merchant {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   name           String
   nameNormalized String
-  verified       Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  verified       Boolean   @default(false)
+  blockedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   locations Location[]
   offers    Offer[]

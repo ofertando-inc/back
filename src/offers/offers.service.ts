@@ -80,7 +80,12 @@ type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
   votes?: { type: VoteType }[];
   categories: { id: string; slug: string; name: string }[];
-  merchant: { id: string; name: string; verified: boolean };
+  merchant: {
+    id: string;
+    name: string;
+    verified: boolean;
+    blockedAt: Date | null;
+  };
   location: {
     id: string;
     address: string;
@@ -211,6 +216,9 @@ export class OffersService {
         status: options.includeNonActive
           ? { not: OfferStatus.DELETED }
           : { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+        // Public detail hides offers of blocked merchants (admins use
+        // includeNonActive to still reach them).
+        ...(options.includeNonActive ? {} : { merchant: { blockedAt: null } }),
       },
       include: this.buildOfferResponseInclude(viewerId),
     });
@@ -463,7 +471,9 @@ export class OffersService {
         select: { id: true, slug: true, name: true },
         orderBy: { order: 'asc' },
       },
-      merchant: { select: { id: true, name: true, verified: true } },
+      merchant: {
+        select: { id: true, name: true, verified: true, blockedAt: true },
+      },
       location: {
         select: {
           id: true,
@@ -492,12 +502,14 @@ export class OffersService {
     const { createdBy, votes, categories, merchant, location, ...payload } =
       offer;
 
+    const { blockedAt, ...merchantPayload } = merchant;
+
     return {
       ...payload,
       createdByUsername: createdBy.username,
       userVote: votes?.[0]?.type ?? null,
       categories,
-      merchant,
+      merchant: { ...merchantPayload, blocked: blockedAt !== null },
       location,
     };
   }
@@ -520,6 +532,12 @@ export class OffersService {
         query.includeExpired === false
           ? OfferStatus.ACTIVE
           : { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] };
+    }
+
+    // Public listings hide offers of blocked merchants; owners and admins keep
+    // seeing them (flagged blocked) so they know what happened.
+    if (!options.admin && !options.ownerId) {
+      where.merchant = { blockedAt: null };
     }
 
     if (options.ownerId) {

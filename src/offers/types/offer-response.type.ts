@@ -10,6 +10,7 @@ export type OfferMerchant = {
   id: string;
   name: string;
   verified: boolean;
+  blocked: boolean;
 };
 
 export type OfferLocation = {
