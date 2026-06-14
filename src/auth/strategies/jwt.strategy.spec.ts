@@ -19,6 +19,7 @@ describe('JwtStrategy', () => {
     username: 'maria',
     role: UserRole.USER,
     status: UserStatus.ACTIVE,
+    reputation: 0,
     createdAt: new Date('2020-01-01T00:00:00Z'),
     updatedAt: new Date('2020-01-01T00:00:00Z'),
   };
