@@ -396,6 +396,65 @@
           "response": []
         },
         {
+          "name": "List merchants (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/merchants?verified=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "merchants"],
+              "query": [
+                {
+                  "key": "verified",
+                  "value": "false",
+                  "description": "moderation queue: false = awaiting review"
+                },
+                {
+                  "key": "blocked",
+                  "value": "true",
+                  "description": "true = blocked merchants only",
+                  "disabled": true
+                },
+                { "key": "q", "value": "", "disabled": true },
+                { "key": "cursor", "value": "", "disabled": true },
+                { "key": "limit", "value": "20", "disabled": true }
+              ]
+            },
+            "description": "JWT + ADMIN. Cursor-paginated merchants (newest first) -> { items: MerchantResponse[], nextCursor }. Filter ?verified=true|false, ?blocked=true|false and ?q=."
+          },
+          "response": []
+        },
+        {
+          "name": "List locations (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/locations?verified=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "locations"],
+              "query": [
+                {
+                  "key": "verified",
+                  "value": "false",
+                  "description": "moderation queue: false = awaiting review"
+                },
+                {
+                  "key": "merchant",
+                  "value": "{{merchantId}}",
+                  "description": "filter by merchant id",
+                  "disabled": true
+                },
+                { "key": "cursor", "value": "", "disabled": true },
+                { "key": "limit", "value": "20", "disabled": true }
+              ]
+            },
+            "description": "JWT + ADMIN. Cursor-paginated locations (newest first), each with its merchant -> { items: (LocationResponse & { merchant: { id, name } })[], nextCursor }. Filter ?verified=true|false and ?merchant=."
+          },
+          "response": []
+        },
+        {
           "name": "Verify merchant (admin)",
           "request": {
             "method": "PATCH",
@@ -446,6 +505,100 @@
               "path": ["admin", "merchants", "merge"]
             },
             "description": "JWT + ADMIN. Moves the source's locations and offers to the target then deletes the source; logs MERGE_MERCHANT. merchant.merge_invalid if sourceId == targetId."
+          },
+          "response": []
+        },
+        {
+          "name": "Edit merchant (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Stores\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "merchants", "{{merchantId}}"]
+            },
+            "description": "JWT + ADMIN. Renames a merchant (recomputes the normalized name). merchant.name_taken (400) if another merchant already uses the name (use merge for duplicates)."
+          },
+          "response": []
+        },
+        {
+          "name": "Block merchant (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"fraud\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/block",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "merchants", "{{merchantId}}", "block"]
+            },
+            "description": "JWT + ADMIN. Blocks a merchant: it leaves public listings/detail/autocomplete and its offers are shown as blocked (derived from blockedAt). Logs BLOCK_MERCHANT. Reversible via unblock."
+          },
+          "response": []
+        },
+        {
+          "name": "Unblock merchant (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/merchants/{{merchantId}}/unblock",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "merchants", "{{merchantId}}", "unblock"]
+            },
+            "description": "JWT + ADMIN. Clears blockedAt; the merchant and its offers return to the public. Logs UNBLOCK_MERCHANT."
+          },
+          "response": []
+        },
+        {
+          "name": "Edit location (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"Carrera 7 #1-2\",\n  \"city\": \"Medellin\",\n  \"region\": \"Antioquia\",\n  \"latitude\": 6.25,\n  \"longitude\": -75.56\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/locations/{{locationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "locations", "{{locationId}}"]
+            },
+            "description": "JWT + ADMIN. Edits a location; any provided field is updated. Changing the city syncs the denormalized city on its offers."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete location (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/locations/{{locationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "locations", "{{locationId}}"],
+              "query": [
+                {
+                  "key": "reassignTo",
+                  "value": "{{locationId}}",
+                  "description": "same-merchant location to move offers to",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "JWT + ADMIN. Deletes a location. With no offers it is removed. With offers and no reassignTo => location.in_use (409). With ?reassignTo=<same-merchant location id> its offers are moved there (city synced) then it is deleted."
           },
           "response": []
         }
