@@ -3,8 +3,8 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 import { trim } from '../../common/transformers/trim.transformer';
 
-export class ListStoresQueryDto {
-  // Free-text autocomplete over store name and city.
+export class ListMerchantsQueryDto {
+  // Free-text autocomplete over the merchant name (accent/case-insensitive).
   @Transform(trim)
   @IsOptional()
   @IsString()

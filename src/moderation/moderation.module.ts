@@ -7,11 +7,11 @@ import { AdminModerationController } from './admin-moderation.controller';
 import { AdminOffersController } from './admin-offers.controller';
 import { AdminReportsController } from './admin-reports.controller';
 import { AdminUsersController } from './admin-users.controller';
-import { ModerationLogService } from './moderation-log.service';
+import { ModerationLogModule } from './moderation-log.module';
 import { ModerationService } from './moderation.service';
 
 @Module({
-  imports: [OffersModule, AuthModule],
+  imports: [OffersModule, AuthModule, ModerationLogModule],
   controllers: [
     AdminOffersController,
     AdminUsersController,
@@ -19,7 +19,6 @@ import { ModerationService } from './moderation.service';
     AdminCommentsController,
     AdminModerationController,
   ],
-  providers: [ModerationService, ModerationLogService],
-  exports: [ModerationLogService],
+  providers: [ModerationService],
 })
 export class ModerationModule {}

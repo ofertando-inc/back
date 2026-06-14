@@ -1,9 +1,9 @@
-export type StoreResponse = {
+export type LocationResponse = {
   id: string;
-  name: string;
+  merchantId: string;
+  address: string;
   city: string;
   region: string | null;
-  address: string | null;
   latitude: number | null;
   longitude: number | null;
   verified: boolean;

@@ -33,7 +33,7 @@ export class GeocodingService {
       return cached.value;
     }
 
-    const results = await this.throttled(() => this.fetchFromNominatim(query));
+    const results = await this.throttled(() => this.searchNominatim(query));
     this.cache.set(key, {
       value: results,
       expiresAt: Date.now() + this.num('geocoding.cacheTtlMs'),
@@ -41,15 +41,65 @@ export class GeocodingService {
     return results;
   }
 
-  private async fetchFromNominatim(
-    query: string,
-  ): Promise<GeocodeSuggestion[]> {
+  // Reverse geocoding: coordinates -> a single address suggestion, to refresh
+  // the textual address when the map pin is moved.
+  async reverse(
+    latitude: number,
+    longitude: number,
+  ): Promise<GeocodeSuggestion | null> {
+    const key = `rev:${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+    const cached = this.cache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.value[0] ?? null;
+    }
+
+    const result = await this.throttled(() =>
+      this.reverseNominatim(latitude, longitude),
+    );
+    this.cache.set(key, {
+      value: result ? [result] : [],
+      expiresAt: Date.now() + this.num('geocoding.cacheTtlMs'),
+    });
+    return result;
+  }
+
+  private async searchNominatim(query: string): Promise<GeocodeSuggestion[]> {
     const url = new URL('/search', this.str('geocoding.baseUrl'));
     url.searchParams.set('q', query);
     url.searchParams.set('format', 'jsonv2');
     url.searchParams.set('addressdetails', '1');
     url.searchParams.set('limit', String(this.num('geocoding.limit')));
 
+    // Restrict results to the configured country (default Colombia).
+    const countryCodes = this.str('geocoding.countryCodes');
+    if (countryCodes) {
+      url.searchParams.set('countrycodes', countryCodes);
+    }
+
+    const data = (await this.fetchJson(url)) as NominatimResult[];
+    return data.map((result) => this.toSuggestion(result));
+  }
+
+  private async reverseNominatim(
+    latitude: number,
+    longitude: number,
+  ): Promise<GeocodeSuggestion | null> {
+    const url = new URL('/reverse', this.str('geocoding.baseUrl'));
+    url.searchParams.set('lat', String(latitude));
+    url.searchParams.set('lon', String(longitude));
+    url.searchParams.set('format', 'jsonv2');
+    url.searchParams.set('addressdetails', '1');
+
+    const data = (await this.fetchJson(url)) as NominatimResult & {
+      error?: unknown;
+    };
+    if (data.error !== undefined || !data.lat) {
+      return null;
+    }
+    return this.toSuggestion(data);
+  }
+
+  private async fetchJson(url: URL): Promise<unknown> {
     const controller = new AbortController();
     const timer = setTimeout(
       () => controller.abort(),
@@ -70,8 +120,7 @@ export class GeocodingService {
         throw new Error(`Nominatim responded ${response.status}`);
       }
 
-      const data = (await response.json()) as NominatimResult[];
-      return data.map((result) => this.toSuggestion(result));
+      return await response.json();
     } catch (error) {
       this.logger.warn(`Geocoding failed: ${(error as Error).message}`);
       throw new AppException(

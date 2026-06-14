@@ -17,9 +17,12 @@ export const ErrorKey = {
   OfferInvalidStatusTransition: 'offer.invalid_status_transition',
   OfferInvalidCategory: 'offer.invalid_category',
   OfferInvalidNear: 'offer.invalid_near',
+  OfferOnlineRequiresUrl: 'offer.online_requires_url',
+  OfferLocationRequired: 'offer.location_required',
 
-  StoreNotFound: 'store.not_found',
-  StoreMergeInvalid: 'store.merge_invalid',
+  MerchantNotFound: 'merchant.not_found',
+  MerchantMergeInvalid: 'merchant.merge_invalid',
+  LocationNotFound: 'location.not_found',
 
   GeocodingUnavailable: 'geocoding.unavailable',
 

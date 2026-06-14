@@ -24,16 +24,16 @@ describe('ModerationLogService', () => {
   it('builds a moderationLog create with the decision, defaulting reason/note to null', () => {
     const result = service.entry(
       'admin-1',
-      ModerationAction.VERIFY_STORE,
-      ModerationTargetType.STORE,
+      ModerationAction.VERIFY_MERCHANT,
+      ModerationTargetType.MERCHANT,
       'store-1',
     );
 
     expect(moderationLog.create).toHaveBeenCalledWith({
       data: {
         actorId: 'admin-1',
-        action: ModerationAction.VERIFY_STORE,
-        targetType: ModerationTargetType.STORE,
+        action: ModerationAction.VERIFY_MERCHANT,
+        targetType: ModerationTargetType.MERCHANT,
         targetId: 'store-1',
         reason: null,
         note: null,
@@ -45,8 +45,8 @@ describe('ModerationLogService', () => {
   it('passes through the provided reason and note', () => {
     void service.entry(
       'admin-1',
-      ModerationAction.MERGE_STORE,
-      ModerationTargetType.STORE,
+      ModerationAction.MERGE_MERCHANT,
+      ModerationTargetType.MERCHANT,
       'target-1',
       { reason: 'dup', note: 'merged from source-1' },
     );
@@ -54,8 +54,8 @@ describe('ModerationLogService', () => {
     expect(moderationLog.create).toHaveBeenCalledWith({
       data: {
         actorId: 'admin-1',
-        action: ModerationAction.MERGE_STORE,
-        targetType: ModerationTargetType.STORE,
+        action: ModerationAction.MERGE_MERCHANT,
+        targetType: ModerationTargetType.MERCHANT,
         targetId: 'target-1',
         reason: 'dup',
         note: 'merged from source-1',

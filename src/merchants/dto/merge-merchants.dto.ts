@@ -3,12 +3,12 @@ import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 import { trim } from '../../common/transformers/trim.transformer';
 
-export class MergeStoresDto {
-  // Duplicate store whose offers are moved over, then deleted.
+export class MergeMerchantsDto {
+  // Duplicate merchant whose locations and offers move over, then deleted.
   @IsUUID()
   sourceId: string;
 
-  // Canonical store that absorbs the source's offers and is kept.
+  // Canonical merchant that absorbs the source and is kept.
   @IsUUID()
   targetId: string;
 
