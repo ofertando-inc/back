@@ -11,6 +11,5 @@ export type CategoryFacet = {
 
 export type OfferFacets = {
   cities: FacetValue[];
-  stores: FacetValue[];
   categories: CategoryFacet[];
 };

@@ -5,6 +5,11 @@ import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
 import type { CountedPaginatedResult } from '../common/pagination/paginated-result.type';
+import {
+  LocationsService,
+  type LocationInput,
+} from '../merchants/locations.service';
+import { MerchantsService } from '../merchants/merchants.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import {
@@ -75,19 +80,25 @@ type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
   votes?: { type: VoteType }[];
   categories: { id: string; slug: string; name: string }[];
-  store: {
+  merchant: { id: string; name: string; verified: boolean };
+  location: {
     id: string;
-    name: string;
+    address: string;
     city: string;
-    verified: boolean;
+    region: string | null;
     latitude: number | null;
     longitude: number | null;
+    verified: boolean;
   } | null;
 };
 
 @Injectable()
 export class OffersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly merchantsService: MerchantsService,
+    private readonly locationsService: LocationsService,
+  ) {}
 
   async create(dto: CreateOfferDto, userId: string): Promise<OfferResponse> {
     const startDate = new Date(dto.startDate);
@@ -97,9 +108,16 @@ export class OffersService {
     this.assertEndInFuture(endDate);
     const categoryIds = await this.resolveCategoryIds(dto.categoryIds);
 
-    if (dto.storeId !== undefined) {
-      await this.assertStoreExists(dto.storeId);
+    const isOnline = dto.isOnline ?? false;
+    if (isOnline && !dto.externalUrl) {
+      throw new AppException(
+        ErrorKey.OfferOnlineRequiresUrl,
+        HttpStatus.BAD_REQUEST,
+      );
     }
+
+    const merchantId = await this.resolveMerchantId(dto);
+    const location = await this.resolveLocation(merchantId, dto, isOnline);
 
     const offer = await this.prisma.offer.create({
       data: {
@@ -107,12 +125,13 @@ export class OffersService {
         description: dto.description,
         offerType: dto.offerType,
         externalUrl: dto.externalUrl,
-        storeName: dto.storeName,
-        city: dto.city,
+        city: location?.city ?? null,
+        isOnline,
         startDate,
         endDate,
         createdById: userId,
-        storeId: dto.storeId ?? null,
+        merchantId,
+        locationId: location?.id ?? null,
         categories: { connect: categoryIds.map((id) => ({ id })) },
       },
       include: this.buildOfferResponseInclude(userId),
@@ -136,15 +155,49 @@ export class OffersService {
     return ids;
   }
 
-  // Ensures a linked store exists before attaching it to an offer.
-  private async assertStoreExists(storeId: string): Promise<void> {
-    const store = await this.prisma.store.findUnique({
-      where: { id: storeId },
-      select: { id: true },
-    });
-    if (!store) {
-      throw new AppException(ErrorKey.StoreNotFound, HttpStatus.NOT_FOUND);
+  // Resolves the merchant: an existing id, or a name (find-or-create).
+  private async resolveMerchantId(dto: {
+    merchantId?: string;
+    merchantName?: string;
+  }): Promise<string> {
+    if (dto.merchantId) {
+      await this.merchantsService.assertExists(dto.merchantId);
+      return dto.merchantId;
     }
+    const merchant = await this.merchantsService.findOrCreate(
+      dto.merchantName ?? '',
+    );
+    return merchant.id;
+  }
+
+  // Resolves the physical location for a merchant. Online offers have none;
+  // physical ones need an existing location id or an inline address.
+  private async resolveLocation(
+    merchantId: string,
+    dto: { locationId?: string; location?: LocationInput },
+    isOnline: boolean,
+  ): Promise<{ id: string; city: string } | null> {
+    if (isOnline) {
+      return null;
+    }
+    if (dto.locationId) {
+      const location = await this.locationsService.findForMerchant(
+        dto.locationId,
+        merchantId,
+      );
+      return { id: location.id, city: location.city };
+    }
+    if (dto.location) {
+      const location = await this.locationsService.findOrCreate(
+        merchantId,
+        dto.location,
+      );
+      return { id: location.id, city: location.city };
+    }
+    throw new AppException(
+      ErrorKey.OfferLocationRequired,
+      HttpStatus.BAD_REQUEST,
+    );
   }
 
   async findById(
@@ -228,18 +281,12 @@ export class OffersService {
 
   async getFacets(): Promise<OfferFacets> {
     // Read-only aggregates — no transaction needed; run them concurrently.
-    const [cities, stores, categories] = await Promise.all([
+    const [cities, categories] = await Promise.all([
       this.prisma.offer.groupBy({
         by: ['city'],
-        where: VISIBLE_OFFER,
+        where: { ...VISIBLE_OFFER, city: { not: null } },
         _count: true,
         orderBy: { city: 'asc' },
-      }),
-      this.prisma.offer.groupBy({
-        by: ['storeName'],
-        where: VISIBLE_OFFER,
-        _count: true,
-        orderBy: { storeName: 'asc' },
       }),
       this.prisma.category.findMany({
         orderBy: { order: 'asc' },
@@ -252,8 +299,9 @@ export class OffersService {
     ]);
 
     return {
-      cities: cities.map((c) => ({ value: c.city, count: c._count })),
-      stores: stores.map((s) => ({ value: s.storeName, count: s._count })),
+      cities: cities.flatMap((c) =>
+        c.city === null ? [] : [{ value: c.city, count: c._count }],
+      ),
       categories: categories.map((c) => ({
         slug: c.slug,
         name: c.name,
@@ -297,8 +345,47 @@ export class OffersService {
         ? await this.resolveCategoryIds(dto.categoryIds)
         : undefined;
 
-    if (dto.storeId !== undefined) {
-      await this.assertStoreExists(dto.storeId);
+    // Resulting online state (defaults to the current one when not toggled).
+    const willBeOnline = dto.isOnline ?? offer.isOnline;
+
+    if (willBeOnline) {
+      const externalUrl =
+        dto.externalUrl !== undefined ? dto.externalUrl : offer.externalUrl;
+      if (!externalUrl) {
+        throw new AppException(
+          ErrorKey.OfferOnlineRequiresUrl,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+
+    // Resolve the merchant only when (re)specified.
+    const merchantChanged =
+      dto.merchantId !== undefined || dto.merchantName !== undefined;
+    const merchantId = merchantChanged
+      ? await this.resolveMerchantId(dto)
+      : offer.merchantId;
+
+    // Resolve the location: cleared when online; (re)resolved when switching to
+    // physical, when the merchant changes, or when a new location is supplied;
+    // otherwise the current one is kept.
+    let locationData: {
+      locationId: string | null;
+      city: string | null;
+    } | null = null;
+    if (willBeOnline) {
+      locationData = { locationId: null, city: null };
+    } else if (
+      dto.locationId !== undefined ||
+      dto.location !== undefined ||
+      offer.isOnline ||
+      merchantChanged
+    ) {
+      const location = await this.resolveLocation(merchantId, dto, false);
+      locationData = {
+        locationId: location?.id ?? null,
+        city: location?.city ?? null,
+      };
     }
 
     const updated = await this.prisma.offer.update({
@@ -308,13 +395,16 @@ export class OffersService {
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.offerType !== undefined && { offerType: dto.offerType }),
         ...(dto.externalUrl !== undefined && { externalUrl: dto.externalUrl }),
-        ...(dto.storeName !== undefined && { storeName: dto.storeName }),
-        ...(dto.city !== undefined && { city: dto.city }),
         ...(dto.startDate !== undefined && {
           startDate: new Date(dto.startDate),
         }),
         ...(dto.endDate !== undefined && { endDate: new Date(dto.endDate) }),
-        ...(dto.storeId !== undefined && { storeId: dto.storeId }),
+        ...(dto.isOnline !== undefined && { isOnline: dto.isOnline }),
+        ...(merchantChanged && { merchantId }),
+        ...(locationData !== null && {
+          locationId: locationData.locationId,
+          city: locationData.city,
+        }),
         ...(categoryIds !== undefined && {
           categories: { set: categoryIds.map((id) => ({ id })) },
         }),
@@ -373,14 +463,16 @@ export class OffersService {
         select: { id: true, slug: true, name: true },
         orderBy: { order: 'asc' },
       },
-      store: {
+      merchant: { select: { id: true, name: true, verified: true } },
+      location: {
         select: {
           id: true,
-          name: true,
+          address: true,
           city: true,
-          verified: true,
+          region: true,
           latitude: true,
           longitude: true,
+          verified: true,
         },
       },
     };
@@ -397,14 +489,16 @@ export class OffersService {
   }
 
   private toOfferResponse(offer: OfferWithResponseRelations): OfferResponse {
-    const { createdBy, votes, categories, store, ...payload } = offer;
+    const { createdBy, votes, categories, merchant, location, ...payload } =
+      offer;
 
     return {
       ...payload,
       createdByUsername: createdBy.username,
       userVote: votes?.[0]?.type ?? null,
       categories,
-      store,
+      merchant,
+      location,
     };
   }
 
@@ -435,14 +529,17 @@ export class OffersService {
     if (query.city) {
       where.city = query.city;
     }
-    if (query.store) {
-      where.storeName = query.store;
+    if (query.merchant) {
+      where.merchantId = query.merchant;
     }
     if (query.offerType) {
       where.offerType = query.offerType;
     }
     if (query.category) {
       where.categories = { some: { slug: query.category } };
+    }
+    if (query.online !== undefined) {
+      where.isOnline = query.online;
     }
     if (query.near) {
       const { latitude, longitude } = parseNearParam(query.near);
@@ -451,9 +548,9 @@ export class OffersService {
         longitude,
         query.radiusKm ?? DEFAULT_NEAR_RADIUS_KM,
       );
-      // Restrict to offers whose linked, geolocated store sits in the box.
-      // Offers without a geolocated store are naturally excluded.
-      where.store = {
+      // Restrict to offers whose location sits in the box. Online offers (no
+      // location) are naturally excluded.
+      where.location = {
         is: {
           latitude: { gte: box.minLat, lte: box.maxLat },
           longitude: { gte: box.minLng, lte: box.maxLng },
@@ -462,11 +559,11 @@ export class OffersService {
     }
 
     if (query.q) {
-      // Free-text search over title, description and store name.
+      // Free-text search over title, description and merchant name.
       where.OR = [
         { title: { contains: query.q, mode: 'insensitive' } },
         { description: { contains: query.q, mode: 'insensitive' } },
-        { storeName: { contains: query.q, mode: 'insensitive' } },
+        { merchant: { name: { contains: query.q, mode: 'insensitive' } } },
       ];
     }
 

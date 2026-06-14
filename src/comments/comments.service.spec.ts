@@ -16,7 +16,6 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     description: 'Description',
     offerType: 'discount',
     externalUrl: null,
-    storeName: 'Store',
     city: 'Bogotá',
     startDate: new Date('2024-01-01T00:00:00Z'),
     endDate: new Date('2099-01-01T00:00:00Z'),
@@ -29,7 +28,9 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     disabledAt: null,
     deletedAt: null,
     createdById: 'author-1',
-    storeId: null,
+    merchantId: 'merchant-1',
+    locationId: null,
+    isOnline: false,
     ...overrides,
   };
 }

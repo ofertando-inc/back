@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -59,9 +60,10 @@ export class ListOffersQueryDto {
   @IsString()
   city?: string;
 
+  // Filter offers by merchant id.
   @IsOptional()
-  @IsString()
-  store?: string;
+  @IsUUID()
+  merchant?: string;
 
   @IsOptional()
   @IsString()
@@ -99,4 +101,12 @@ export class ListOffersQueryDto {
   )
   @IsBoolean()
   includeExpired?: boolean;
+
+  // Filter by channel: true = online-only offers, false = physical ones.
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined ? undefined : value === 'true' || value === true,
+  )
+  @IsBoolean()
+  online?: boolean;
 }

@@ -3,6 +3,8 @@ import { Offer, OfferStatus, Prisma, VoteType } from '@prisma/client';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
+import { LocationsService } from '../merchants/locations.service';
+import { MerchantsService } from '../merchants/merchants.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import {
@@ -31,7 +33,6 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     description: 'A description longer than the minimum',
     offerType: 'discount',
     externalUrl: null,
-    storeName: 'Store',
     city: 'Bogotá',
     startDate: new Date('2024-01-01T00:00:00Z'),
     endDate: new Date('2099-01-01T00:00:00Z'),
@@ -44,7 +45,9 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     disabledAt: null,
     deletedAt: null,
     createdById: 'user-1',
-    storeId: null,
+    merchantId: 'merchant-1',
+    locationId: null,
+    isOnline: false,
     ...overrides,
   };
 }
@@ -53,6 +56,16 @@ type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
   votes?: { type: VoteType }[];
   categories: { id: string; slug: string; name: string }[];
+  merchant: { id: string; name: string; verified: boolean };
+  location: {
+    id: string;
+    address: string;
+    city: string;
+    region: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    verified: boolean;
+  } | null;
 };
 
 function buildOfferWithRelations(
@@ -67,6 +80,8 @@ function buildOfferWithRelations(
     ...buildOffer(overrides),
     createdBy: { username: relations.createdByUsername ?? 'author' },
     categories: relations.categories ?? [],
+    merchant: { id: 'merchant-1', name: 'Acme', verified: false },
+    location: null,
     ...(relations.votes !== undefined && { votes: relations.votes }),
   };
 }
@@ -85,7 +100,11 @@ describe('OffersService', () => {
   let service: OffersService;
   let prismaOffer: PrismaOfferMock;
   let prismaCategory: { count: jest.Mock; findMany: jest.Mock };
-  let prismaStore: { findUnique: jest.Mock };
+  let merchantsService: { assertExists: jest.Mock; findOrCreate: jest.Mock };
+  let locationsService: {
+    findForMerchant: jest.Mock;
+    findOrCreate: jest.Mock;
+  };
 
   beforeEach(async () => {
     prismaOffer = {
@@ -101,7 +120,20 @@ describe('OffersService', () => {
       count: jest.fn().mockResolvedValue(1),
       findMany: jest.fn(),
     };
-    prismaStore = { findUnique: jest.fn() };
+    merchantsService = {
+      assertExists: jest.fn(),
+      findOrCreate: jest.fn().mockResolvedValue({ id: 'merchant-1' }),
+    };
+    locationsService = {
+      findForMerchant: jest.fn().mockResolvedValue({
+        id: 'location-1',
+        city: 'Bogotá',
+      }),
+      findOrCreate: jest.fn().mockResolvedValue({
+        id: 'location-1',
+        city: 'Bogotá',
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -111,12 +143,13 @@ describe('OffersService', () => {
           useValue: {
             offer: prismaOffer,
             category: prismaCategory,
-            store: prismaStore,
             $transaction: jest.fn((ops: Promise<unknown>[]) =>
               Promise.all(ops),
             ),
           },
         },
+        { provide: MerchantsService, useValue: merchantsService },
+        { provide: LocationsService, useValue: locationsService },
       ],
     }).compile();
 
@@ -132,8 +165,8 @@ describe('OffersService', () => {
       description: 'Description long enough',
       offerType: 'discount',
       externalUrl: undefined,
-      storeName: 'Store',
-      city: 'Bogotá',
+      merchantName: 'Acme',
+      location: { address: 'Carrera 7', city: 'Bogotá' },
       startDate: futureStart,
       endDate: futureEnd,
       categoryIds: ['11111111-1111-1111-1111-111111111111'],
@@ -160,14 +193,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          store: {
+          merchant: { select: { id: true, name: true, verified: true } },
+          location: {
             select: {
               id: true,
-              name: true,
+              address: true,
               city: true,
-              verified: true,
+              region: true,
               latitude: true,
               longitude: true,
+              verified: true,
             },
           },
           votes: {
@@ -182,6 +217,8 @@ describe('OffersService', () => {
         createdByUsername: 'author',
         userVote: null,
         categories: [],
+        merchant: { id: 'merchant-1', name: 'Acme', verified: false },
+        location: null,
       });
     });
 
@@ -214,29 +251,98 @@ describe('OffersService', () => {
       expect(prismaOffer.create).not.toHaveBeenCalled();
     });
 
-    it('links a store when storeId is provided and it exists', async () => {
-      prismaStore.findUnique.mockResolvedValue({ id: 'store-1' });
+    it('resolves an existing merchant by id and creates the offer', async () => {
       prismaOffer.create.mockResolvedValue(buildOfferWithRelations());
 
-      await service.create({ ...baseDto, storeId: 'store-1' }, 'user-1');
+      await service.create(
+        { ...baseDto, merchantName: undefined, merchantId: 'merchant-9' },
+        'user-1',
+      );
 
-      expect(prismaStore.findUnique).toHaveBeenCalledWith({
-        where: { id: 'store-1' },
-        select: { id: true },
-      });
+      expect(merchantsService.assertExists).toHaveBeenCalledWith('merchant-9');
       expect(prismaOffer.create).toHaveBeenCalledWith(
         objectContaining({
-          data: objectContaining({ storeId: 'store-1' }),
+          data: objectContaining({ merchantId: 'merchant-9' }),
         }),
       );
     });
 
-    it('throws store.not_found when storeId does not exist', async () => {
-      prismaStore.findUnique.mockResolvedValue(null);
+    it('throws merchant.not_found when the given merchantId does not exist', async () => {
+      merchantsService.assertExists.mockRejectedValue({
+        key: ErrorKey.MerchantNotFound,
+      });
 
       await expect(
-        service.create({ ...baseDto, storeId: 'ghost' }, 'user-1'),
-      ).rejects.toMatchObject({ key: ErrorKey.StoreNotFound });
+        service.create(
+          { ...baseDto, merchantName: undefined, merchantId: 'ghost' },
+          'user-1',
+        ),
+      ).rejects.toMatchObject({ key: ErrorKey.MerchantNotFound });
+      expect(prismaOffer.create).not.toHaveBeenCalled();
+    });
+
+    it('find-or-creates the merchant and location, denormalizing the city', async () => {
+      prismaOffer.create.mockResolvedValue(buildOfferWithRelations());
+
+      await service.create(baseDto, 'user-1');
+
+      expect(merchantsService.findOrCreate).toHaveBeenCalledWith('Acme');
+      expect(locationsService.findOrCreate).toHaveBeenCalledWith('merchant-1', {
+        address: 'Carrera 7',
+        city: 'Bogotá',
+      });
+      const call = firstCallArg<{
+        data: {
+          merchantId: string;
+          locationId: string | null;
+          city: string | null;
+        };
+      }>(prismaOffer.create);
+      expect(call.data.merchantId).toBe('merchant-1');
+      expect(call.data.locationId).toBe('location-1');
+      expect(call.data.city).toBe('Bogotá');
+    });
+
+    it('throws offer.location_required for a physical offer without a location', async () => {
+      await expect(
+        service.create({ ...baseDto, location: undefined }, 'user-1'),
+      ).rejects.toMatchObject({ key: ErrorKey.OfferLocationRequired });
+      expect(prismaOffer.create).not.toHaveBeenCalled();
+    });
+
+    it('creates an online offer with no location/city even if a location is sent', async () => {
+      prismaOffer.create.mockResolvedValue(buildOfferWithRelations());
+
+      await service.create(
+        {
+          ...baseDto,
+          isOnline: true,
+          externalUrl: 'https://shop.example.com/promo',
+        },
+        'user-1',
+      );
+
+      // No location resolution happens for online offers.
+      expect(locationsService.findOrCreate).not.toHaveBeenCalled();
+      const call = firstCallArg<{
+        data: {
+          isOnline: boolean;
+          city: string | null;
+          locationId: string | null;
+        };
+      }>(prismaOffer.create);
+      expect(call.data.isOnline).toBe(true);
+      expect(call.data.city).toBeNull();
+      expect(call.data.locationId).toBeNull();
+    });
+
+    it('throws offer.online_requires_url when online without an externalUrl', async () => {
+      await expect(
+        service.create(
+          { ...baseDto, isOnline: true, externalUrl: undefined },
+          'user-1',
+        ),
+      ).rejects.toMatchObject({ key: ErrorKey.OfferOnlineRequiresUrl });
       expect(prismaOffer.create).not.toHaveBeenCalled();
     });
 
@@ -285,14 +391,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          store: {
+          merchant: { select: { id: true, name: true, verified: true } },
+          location: {
             select: {
               id: true,
-              name: true,
+              address: true,
               city: true,
-              verified: true,
+              region: true,
               latitude: true,
               longitude: true,
+              verified: true,
             },
           },
         },
@@ -339,14 +447,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          store: {
+          merchant: { select: { id: true, name: true, verified: true } },
+          location: {
             select: {
               id: true,
-              name: true,
+              address: true,
               city: true,
-              verified: true,
+              region: true,
               latitude: true,
               longitude: true,
+              verified: true,
             },
           },
         },
@@ -373,14 +483,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          store: {
+          merchant: { select: { id: true, name: true, verified: true } },
+          location: {
             select: {
               id: true,
-              name: true,
+              address: true,
               city: true,
-              verified: true,
+              region: true,
               latitude: true,
               longitude: true,
+              verified: true,
             },
           },
           votes: {
@@ -464,18 +576,55 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          store: {
+          merchant: { select: { id: true, name: true, verified: true } },
+          location: {
             select: {
               id: true,
-              name: true,
+              address: true,
               city: true,
-              verified: true,
+              region: true,
               latitude: true,
               longitude: true,
+              verified: true,
             },
           },
         },
       });
+    });
+
+    it('switching an offer to online clears city and location', async () => {
+      prismaOffer.findUnique.mockResolvedValue(
+        buildOffer({
+          externalUrl: 'https://shop.example.com',
+          city: 'Bogotá',
+          locationId: 'location-1',
+        }),
+      );
+      prismaOffer.update.mockResolvedValue(buildOfferWithRelations());
+
+      await service.update('offer-1', { isOnline: true });
+
+      const call = firstCallArg<{
+        data: {
+          isOnline: boolean;
+          city: string | null;
+          locationId: string | null;
+        };
+      }>(prismaOffer.update);
+      expect(call.data.isOnline).toBe(true);
+      expect(call.data.city).toBeNull();
+      expect(call.data.locationId).toBeNull();
+    });
+
+    it('rejects switching to online when the offer has no externalUrl', async () => {
+      prismaOffer.findUnique.mockResolvedValue(
+        buildOffer({ externalUrl: null }),
+      );
+
+      await expect(
+        service.update('offer-1', { isOnline: true }),
+      ).rejects.toMatchObject({ key: ErrorKey.OfferOnlineRequiresUrl });
+      expect(prismaOffer.update).not.toHaveBeenCalled();
     });
 
     it('rejects updates where the merged dates are inconsistent', async () => {
@@ -518,14 +667,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          store: {
+          merchant: { select: { id: true, name: true, verified: true } },
+          location: {
             select: {
               id: true,
-              name: true,
+              address: true,
               city: true,
-              verified: true,
+              region: true,
               latitude: true,
               longitude: true,
+              verified: true,
             },
           },
         },
@@ -558,14 +709,16 @@ describe('OffersService', () => {
               select: { id: true, slug: true, name: true },
               orderBy: { order: 'asc' },
             },
-            store: {
+            merchant: { select: { id: true, name: true, verified: true } },
+            location: {
               select: {
                 id: true,
-                name: true,
+                address: true,
                 city: true,
-                verified: true,
+                region: true,
                 latitude: true,
                 longitude: true,
+                verified: true,
               },
             },
             votes: {
@@ -620,14 +773,16 @@ describe('OffersService', () => {
             select: { id: true, slug: true, name: true },
             orderBy: { order: 'asc' },
           },
-          store: {
+          merchant: { select: { id: true, name: true, verified: true } },
+          location: {
             select: {
               id: true,
-              name: true,
+              address: true,
               city: true,
-              verified: true,
+              region: true,
               latitude: true,
               longitude: true,
+              verified: true,
             },
           },
         },
@@ -683,7 +838,19 @@ describe('OffersService', () => {
       );
     });
 
-    it('applies a store bounding-box filter for near with an explicit radius', async () => {
+    it('filters by channel when online is provided', async () => {
+      prismaOffer.findMany.mockResolvedValue([]);
+
+      await service.findAll({ online: true } as ListOffersQueryDto);
+
+      expect(prismaOffer.findMany).toHaveBeenCalledWith(
+        objectContaining({
+          where: objectContaining({ isOnline: true }),
+        }),
+      );
+    });
+
+    it('applies a location bounding-box filter for near with an explicit radius', async () => {
       prismaOffer.findMany.mockResolvedValue([]);
 
       await service.findAll({
@@ -693,7 +860,7 @@ describe('OffersService', () => {
 
       const call = firstCallArg<{
         where: {
-          store: {
+          location: {
             is: {
               latitude: { gte: number; lte: number };
               longitude: { gte: number; lte: number };
@@ -701,7 +868,7 @@ describe('OffersService', () => {
           };
         };
       }>(prismaOffer.findMany);
-      const box = call.where.store.is;
+      const box = call.where.location.is;
       expect(box.latitude.gte).toBeCloseTo(4.5651, 3);
       expect(box.latitude.lte).toBeCloseTo(4.6549, 3);
       expect(box.longitude.gte).toBeCloseTo(-74.1251, 3);
@@ -826,7 +993,7 @@ describe('OffersService', () => {
       expect(decoded.id).toBe('offer-2');
     });
 
-    it('applies a free-text search over title, description and store', async () => {
+    it('applies a free-text search over title, description and merchant name', async () => {
       prismaOffer.findMany.mockResolvedValue([]);
 
       await service.findAll({ q: 'sony' } as ListOffersQueryDto);
@@ -837,19 +1004,19 @@ describe('OffersService', () => {
       expect(call.where.OR).toEqual([
         { title: { contains: 'sony', mode: 'insensitive' } },
         { description: { contains: 'sony', mode: 'insensitive' } },
-        { storeName: { contains: 'sony', mode: 'insensitive' } },
+        { merchant: { name: { contains: 'sony', mode: 'insensitive' } } },
       ]);
     });
 
-    it('filters by store name', async () => {
+    it('filters by merchant id', async () => {
       prismaOffer.findMany.mockResolvedValue([]);
 
-      await service.findAll({ store: 'Carrefour' } as ListOffersQueryDto);
+      await service.findAll({ merchant: 'merchant-1' } as ListOffersQueryDto);
 
-      const call = firstCallArg<{ where: { storeName: string } }>(
+      const call = firstCallArg<{ where: { merchantId: string } }>(
         prismaOffer.findMany,
       );
-      expect(call.where.storeName).toBe('Carrefour');
+      expect(call.where.merchantId).toBe('merchant-1');
     });
 
     it('filters by category slug', async () => {
@@ -896,13 +1063,11 @@ describe('OffersService', () => {
   });
 
   describe('getFacets', () => {
-    it('aggregates cities, stores and category counts over visible offers', async () => {
-      prismaOffer.groupBy
-        .mockResolvedValueOnce([
-          { city: 'Bogotá', _count: 3 },
-          { city: 'Cali', _count: 1 },
-        ])
-        .mockResolvedValueOnce([{ storeName: 'Acme', _count: 4 }]);
+    it('aggregates cities and category counts over visible offers', async () => {
+      prismaOffer.groupBy.mockResolvedValueOnce([
+        { city: 'Bogotá', _count: 3 },
+        { city: 'Cali', _count: 1 },
+      ]);
       prismaCategory.findMany.mockResolvedValue([
         { slug: 'technology', name: 'Technology', _count: { offers: 2 } },
       ]);
@@ -913,7 +1078,6 @@ describe('OffersService', () => {
         { value: 'Bogotá', count: 3 },
         { value: 'Cali', count: 1 },
       ]);
-      expect(result.stores).toEqual([{ value: 'Acme', count: 4 }]);
       expect(result.categories).toEqual([
         { slug: 'technology', name: 'Technology', count: 2 },
       ]);
