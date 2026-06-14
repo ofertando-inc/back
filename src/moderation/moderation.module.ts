@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
 import { OffersModule } from '../offers/offers.module';
+import { ReputationModule } from '../reputation/reputation.module';
 import { AdminCommentsController } from './admin-comments.controller';
 import { AdminModerationController } from './admin-moderation.controller';
 import { AdminOffersController } from './admin-offers.controller';
@@ -11,7 +12,7 @@ import { ModerationLogModule } from './moderation-log.module';
 import { ModerationService } from './moderation.service';
 
 @Module({
-  imports: [OffersModule, AuthModule, ModerationLogModule],
+  imports: [OffersModule, AuthModule, ModerationLogModule, ReputationModule],
   controllers: [
     AdminOffersController,
     AdminUsersController,

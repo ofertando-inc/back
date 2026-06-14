@@ -6,6 +6,7 @@ export type PublicUser = {
   username: string;
   role: UserRole;
   status: UserStatus;
+  reputation: number;
   createdAt: Date;
   updatedAt: Date;
 };

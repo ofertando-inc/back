@@ -21,6 +21,7 @@ import { ListOffersQueryDto } from '../offers/dto/list-offers-query.dto';
 import { OffersService } from '../offers/offers.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReputationService } from '../reputation/reputation.service';
 import type { PublicUser } from '../users/types/public-user.type';
 import { ListModerationLogQueryDto } from './dto/list-moderation-log-query.dto';
 import { ListReportedCommentsQueryDto } from './dto/list-reported-comments-query.dto';
@@ -66,6 +67,7 @@ const publicUserSelect = {
   username: true,
   role: true,
   status: true,
+  reputation: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -78,7 +80,24 @@ export class ModerationService {
     private readonly refreshTokensService: RefreshTokensService,
     private readonly configService: ConfigService,
     private readonly moderationLog: ModerationLogService,
+    private readonly reputation: ReputationService,
   ) {}
+
+  // Reputation ops for every distinct reporter of a target's pending reports.
+  private reporterReputation(
+    reporters: { userId: string }[],
+    reason: 'reportResolved' | 'reportDismissed',
+    sourceId: string,
+  ): Prisma.PrismaPromise<unknown>[] {
+    const delta = this.reputation.points(reason);
+    return reporters.flatMap((r) =>
+      this.reputation.entries(r.userId, delta, {
+        reason,
+        sourceType: 'report',
+        sourceId,
+      }),
+    );
+  }
 
   listOffers(
     query: ListOffersQueryDto,
@@ -110,7 +129,14 @@ export class ModerationService {
       );
     }
 
+    const reporters = await this.prisma.report.findMany({
+      where: { offerId, status: ReportStatus.PENDING },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+
     // Disabling takes a moderation decision: the pending reports are resolved.
+    // The author is penalized for the abuse; each reporter is rewarded.
     await this.prisma.$transaction([
       this.prisma.offer.update({
         where: { id: offerId },
@@ -131,6 +157,16 @@ export class ModerationService {
         offerId,
         decision,
       ),
+      ...this.reputation.entries(
+        offer.createdById,
+        this.reputation.points('offerDisabled'),
+        {
+          reason: 'offerDisabled',
+          sourceType: 'offer_moderation',
+          sourceId: offerId,
+        },
+      ),
+      ...this.reporterReputation(reporters, 'reportResolved', offerId),
     ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
@@ -164,6 +200,12 @@ export class ModerationService {
       data.status = OfferStatus.ACTIVE;
     }
 
+    const reporters = await this.prisma.report.findMany({
+      where: { offerId, status: ReportStatus.PENDING },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+
     await this.prisma.$transaction([
       this.prisma.report.updateMany({
         where: { offerId, status: ReportStatus.PENDING },
@@ -177,6 +219,7 @@ export class ModerationService {
         offerId,
         decision,
       ),
+      ...this.reporterReputation(reporters, 'reportDismissed', offerId),
     ]);
 
     return this.findEnrichedOffer(offerId, viewerId);
@@ -660,9 +703,16 @@ export class ModerationService {
       );
     }
 
+    const reporters = await this.prisma.commentReport.findMany({
+      where: { commentId, status: ReportStatus.PENDING },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+
     // Hiding takes a moderation decision: the pending reports are resolved and
     // the comment leaves public view, so it stops counting toward the offer
-    // commentCount (and its root replyCount), like an author deletion.
+    // commentCount (and its root replyCount), like an author deletion. Each
+    // reporter is rewarded.
     const ops: Prisma.PrismaPromise<unknown>[] = [
       this.prisma.comment.update({
         where: { id: commentId },
@@ -694,6 +744,10 @@ export class ModerationService {
       );
     }
 
+    ops.push(
+      ...this.reporterReputation(reporters, 'reportResolved', commentId),
+    );
+
     await this.prisma.$transaction(ops);
 
     return this.findCommentSummary(commentId);
@@ -721,6 +775,12 @@ export class ModerationService {
       );
     }
 
+    const reporters = await this.prisma.commentReport.findMany({
+      where: { commentId, status: ReportStatus.PENDING },
+      select: { userId: true },
+      distinct: ['userId'],
+    });
+
     await this.prisma.$transaction([
       this.prisma.commentReport.updateMany({
         where: { commentId, status: ReportStatus.PENDING },
@@ -737,6 +797,7 @@ export class ModerationService {
         commentId,
         decision,
       ),
+      ...this.reporterReputation(reporters, 'reportDismissed', commentId),
     ]);
 
     return this.findCommentSummary(commentId);

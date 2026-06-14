@@ -4,15 +4,23 @@ import { Prisma, VoteType } from '@prisma/client';
 import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReputationService } from '../reputation/reputation.service';
 import { CommentVoteResponse } from './types/comment-vote-response.type';
 
 function voteWeight(type: VoteType): number {
   return type === VoteType.UP ? 1 : -1;
 }
 
+function isUp(type: VoteType | null): number {
+  return type === VoteType.UP ? 1 : 0;
+}
+
 @Injectable()
 export class CommentVotesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reputation: ReputationService,
+  ) {}
 
   async cast(
     userId: string,
@@ -47,6 +55,19 @@ export class CommentVotesService {
         data: { score: { increment: scoreDelta } },
       });
 
+      // Reward the comment's author for the net change in this user's upvote
+      // (not for self-votes).
+      const repDelta =
+        this.reputation.points('commentUpvote') *
+        (isUp(type) - isUp(existing?.type ?? null));
+      if (repDelta !== 0 && comment.userId !== userId) {
+        await this.reputation.applyWithin(tx, comment.userId, repDelta, {
+          reason: 'commentUpvote',
+          sourceType: 'comment_vote',
+          sourceId: commentId,
+        });
+      }
+
       return { score: updated.score, userVote: type };
     });
   }
@@ -72,6 +93,20 @@ export class CommentVotesService {
         where: { id: commentId },
         data: { score: { decrement: voteWeight(existing.type) } },
       });
+
+      // Removing an upvote takes back the author's reward (not for self-votes).
+      if (existing.type === VoteType.UP && comment.userId !== userId) {
+        await this.reputation.applyWithin(
+          tx,
+          comment.userId,
+          -this.reputation.points('commentUpvote'),
+          {
+            reason: 'commentUpvote',
+            sourceType: 'comment_vote',
+            sourceId: commentId,
+          },
+        );
+      }
 
       return { score: updated.score, userVote: null };
     });

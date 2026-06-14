@@ -19,6 +19,7 @@ import { ListOffersQueryDto } from '../offers/dto/list-offers-query.dto';
 import { OffersService } from '../offers/offers.service';
 import type { OfferResponse } from '../offers/types/offer-response.type';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReputationService } from '../reputation/reputation.service';
 import { ModerationLogService } from './moderation-log.service';
 import type { PublicUser } from '../users/types/public-user.type';
 import { ModerationService } from './moderation.service';
@@ -85,6 +86,7 @@ function buildPublicUser(overrides: Partial<PublicUser> = {}): PublicUser {
     username: 'someone',
     role: UserRole.USER,
     status: UserStatus.ACTIVE,
+    reputation: 0,
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     ...overrides,
@@ -159,6 +161,7 @@ describe('ModerationService', () => {
   let refreshTokensService: jest.Mocked<
     Pick<RefreshTokensService, 'revokeAllForUser'>
   >;
+  let reputation: { points: jest.Mock; entries: jest.Mock };
   let commentThreshold = 3;
 
   beforeEach(async () => {
@@ -186,12 +189,18 @@ describe('ModerationService', () => {
       moderationLog: { findMany: jest.fn(), create: jest.fn() },
       $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     };
+    prisma.report.findMany.mockResolvedValue([]);
+    prisma.commentReport.findMany.mockResolvedValue([]);
     offersService = {
       findAll: jest.fn(),
       findById: jest.fn(),
     };
     refreshTokensService = {
       revokeAllForUser: jest.fn(),
+    };
+    reputation = {
+      points: jest.fn().mockReturnValue(0),
+      entries: jest.fn().mockReturnValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -205,6 +214,7 @@ describe('ModerationService', () => {
           provide: ConfigService,
           useValue: { get: jest.fn(() => commentThreshold) },
         },
+        { provide: ReputationService, useValue: reputation },
       ],
     }).compile();
 
@@ -278,6 +288,27 @@ describe('ModerationService', () => {
       await service.disableOffer('offer-1', 'admin-1');
 
       expect(prisma.offer.update).toHaveBeenCalled();
+    });
+
+    it('penalizes the author and rewards each reporter', async () => {
+      prisma.offer.findUnique.mockResolvedValue(
+        buildOffer({ createdById: 'author-1' }),
+      );
+      prisma.report.findMany.mockResolvedValue([{ userId: 'reporter-1' }]);
+      offersService.findById.mockResolvedValue(buildOfferResponse());
+
+      await service.disableOffer('offer-1', 'admin-1');
+
+      expect(reputation.entries).toHaveBeenCalledWith('author-1', 0, {
+        reason: 'offerDisabled',
+        sourceType: 'offer_moderation',
+        sourceId: 'offer-1',
+      });
+      expect(reputation.entries).toHaveBeenCalledWith('reporter-1', 0, {
+        reason: 'reportResolved',
+        sourceType: 'report',
+        sourceId: 'offer-1',
+      });
     });
 
     it('throws offer.not_found when the offer does not exist', async () => {

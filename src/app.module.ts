@@ -17,7 +17,9 @@ import { ModerationModule } from './moderation/moderation.module';
 import { OffersModule } from './offers/offers.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { reportConfig } from './config/report.config';
+import { reputationConfig } from './config/reputation.config';
 import { ReportsModule } from './reports/reports.module';
+import { ReputationModule } from './reputation/reputation.module';
 import { UsersModule } from './users/users.module';
 import { VotesModule } from './votes/votes.module';
 
@@ -31,6 +33,7 @@ import { VotesModule } from './votes/votes.module';
         offerExpirationConfig,
         commentReportConfig,
         geocodingConfig,
+        reputationConfig,
       ],
     }),
     ScheduleModule.forRoot(),
@@ -49,6 +52,7 @@ import { VotesModule } from './votes/votes.module';
     CategoriesModule,
     MerchantsModule,
     GeocodingModule,
+    ReputationModule,
   ],
   controllers: [AppController],
   providers: [
