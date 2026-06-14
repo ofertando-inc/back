@@ -5,5 +5,6 @@ export const merchantResponseSelect = {
   id: true,
   name: true,
   verified: true,
+  blockedAt: true,
   createdAt: true,
 } satisfies Prisma.MerchantSelect;

@@ -31,7 +31,10 @@ describe('MerchantsService', () => {
     service = module.get(MerchantsService);
   });
 
-  const visible = { OR: [{ verified: true }, { offers: { some: {} } }] };
+  const visible = {
+    blockedAt: null,
+    OR: [{ verified: true }, { offers: { some: {} } }],
+  };
 
   describe('search', () => {
     it('combines orphan-hiding with a normalized name filter when q is provided', async () => {
