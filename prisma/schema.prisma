@@ -60,15 +60,17 @@ enum ModerationAction {
   RESTORE_OFFER
   DISABLE_USER
   RESTORE_USER
-  VERIFY_STORE
-  MERGE_STORE
+  VERIFY_MERCHANT
+  VERIFY_LOCATION
+  MERGE_MERCHANT
 }
 
 enum ModerationTargetType {
   COMMENT
   OFFER
   USER
-  STORE
+  MERCHANT
+  LOCATION
 }
 
 model User {
@@ -89,7 +91,6 @@ model User {
   commentVotes     CommentVote[]
   commentReports   CommentReport[]
   moderationLogs   ModerationLog[] @relation("ModerationActor")
-  stores           Store[]
 
   @@map("users")
 }
@@ -117,8 +118,8 @@ model Offer {
   description String
   offerType   String
   externalUrl String?
-  storeName   String
-  city        String
+  city        String?
+  isOnline    Boolean     @default(false)
   startDate   DateTime
   endDate     DateTime
   status       OfferStatus @default(ACTIVE)
@@ -132,8 +133,10 @@ model Offer {
 
   createdById String
   createdBy   User       @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  storeId     String?
-  store       Store?     @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  merchantId  String
+  merchant    Merchant   @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  locationId  String?
+  location    Location?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
   votes       Vote[]
   reports     Report[]
   comments    Comment[]
@@ -142,29 +145,44 @@ model Offer {
   @@index([status])
   @@index([createdById])
   @@index([city])
-  @@index([storeId])
+  @@index([merchantId])
+  @@index([locationId])
   @@map("offers")
 }
 
-model Store {
-  id        String   @id @default(uuid())
-  name      String
-  city      String
-  region    String?
-  address   String?
-  latitude  Float?
-  longitude Float?
-  verified  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Merchant {
+  id             String   @id @default(uuid())
+  name           String
+  nameNormalized String
+  verified       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  createdById String?
-  createdBy   User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
-  offers      Offer[]
+  locations Location[]
+  offers    Offer[]
 
-  @@index([name])
+  @@index([nameNormalized])
+  @@map("merchants")
+}
+
+model Location {
+  id         String   @id @default(uuid())
+  merchantId String
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  address    String
+  city       String
+  region     String?
+  latitude   Float?
+  longitude  Float?
+  verified   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  offers Offer[]
+
+  @@index([merchantId])
   @@index([latitude, longitude])
-  @@map("stores")
+  @@map("locations")
 }
 
 model Category {

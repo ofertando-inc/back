@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "offers" ADD COLUMN     "isOnline" BOOLEAN NOT NULL DEFAULT false,
+ALTER COLUMN "city" DROP NOT NULL;
