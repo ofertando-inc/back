@@ -44,8 +44,8 @@ const validOfferPayload = () => ({
   title: 'Expiring offer',
   description: 'A very compelling description for expiration tests',
   offerType: 'discount',
-  storeName: 'Acme',
-  city: 'Bogotá',
+  merchantName: 'Acme',
+  location: { address: 'Carrera 7', city: 'Bogotá' },
   startDate: futureIso(1),
   endDate: futureIso(7),
 });

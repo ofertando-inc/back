@@ -38,9 +38,12 @@ type OfferBody = {
   createdById: string;
   createdByUsername: string;
   userVote: 'UP' | 'DOWN' | null;
-  city: string;
-  storeName: string;
+  city: string | null;
   offerType: string;
+  isOnline: boolean;
+  externalUrl: string | null;
+  merchant: { id: string; name: string; verified: boolean };
+  location: { id: string; city: string } | null;
   endDate: string;
   categories: { id: string; slug: string; name: string }[];
 };
@@ -65,8 +68,8 @@ const validOfferPayload = () => ({
   title: 'Big discount',
   description: 'A very compelling discount description',
   offerType: 'discount',
-  storeName: 'Acme',
-  city: 'Bogotá',
+  merchantName: 'Acme',
+  location: { address: 'Carrera 7', city: 'Bogotá' },
   startDate: futureIso(1),
   endDate: futureIso(7),
 });
@@ -236,10 +239,14 @@ describe('Offers flow (e2e)', () => {
       expect(secondBody.nextCursor).toBeNull();
     });
 
-    it('filters by city', async () => {
+    it('filters by city (derived from the location)', async () => {
       const author = await registerUser('author@example.com', 'author');
-      await createOfferAs(author.accessToken, { city: 'Bogotá' });
-      await createOfferAs(author.accessToken, { city: 'Medellín' });
+      await createOfferAs(author.accessToken, {
+        location: { address: 'Carrera 7', city: 'Bogotá' },
+      });
+      await createOfferAs(author.accessToken, {
+        location: { address: 'Calle 10', city: 'Medellín' },
+      });
 
       const response = await request(app.getHttpServer()).get(
         '/offers?city=Medell%C3%ADn',
@@ -302,7 +309,7 @@ describe('Offers flow (e2e)', () => {
       expect(body.key).toBe('pagination.invalid_cursor');
     });
 
-    it('searches offers by q (title/description/store)', async () => {
+    it('searches offers by q (title/description/merchant)', async () => {
       const author = await registerUser('author@example.com', 'author');
       await createOfferAs(author.accessToken, { title: 'Sony headphones' });
       await createOfferAs(author.accessToken, { title: 'Bose speaker' });
@@ -313,17 +320,19 @@ describe('Offers flow (e2e)', () => {
       expect(body.items[0].title).toBe('Sony headphones');
     });
 
-    it('filters by store name', async () => {
+    it('filters by merchant', async () => {
       const author = await registerUser('author@example.com', 'author');
-      await createOfferAs(author.accessToken, { storeName: 'Carrefour' });
-      await createOfferAs(author.accessToken, { storeName: 'Auchan' });
+      const auchan = await createOfferAs(author.accessToken, {
+        merchantName: 'Auchan',
+      });
+      await createOfferAs(author.accessToken, { merchantName: 'Carrefour' });
 
       const res = await request(app.getHttpServer()).get(
-        '/offers?store=Auchan',
+        `/offers?merchant=${auchan.merchant.id}`,
       );
       const body = res.body as ListBody;
       expect(body.items).toHaveLength(1);
-      expect(body.items[0].storeName).toBe('Auchan');
+      expect(body.items[0].merchant.id).toBe(auchan.merchant.id);
     });
 
     it('filters by category slug', async () => {
@@ -579,7 +588,7 @@ describe('Offers flow (e2e)', () => {
   });
 
   describe('GET /offers/facets', () => {
-    it('returns cities, stores and category counts over visible offers', async () => {
+    it('returns cities and category counts over visible offers', async () => {
       const author = await registerUser('author@example.com', 'author');
       const cats = (await request(app.getHttpServer()).get('/categories'))
         .body as { id: string; slug: string }[];
@@ -587,13 +596,11 @@ describe('Offers flow (e2e)', () => {
       const home = cats.find((c) => c.slug === 'home')!;
 
       await createOfferAs(author.accessToken, {
-        city: 'Bogotá',
-        storeName: 'Acme',
+        location: { address: 'Carrera 7', city: 'Bogotá' },
         categoryIds: [tech.id],
       });
       await createOfferAs(author.accessToken, {
-        city: 'Bogotá',
-        storeName: 'Globex',
+        location: { address: 'Calle 80', city: 'Bogotá' },
         categoryIds: [tech.id, home.id],
       });
 
@@ -601,17 +608,10 @@ describe('Offers flow (e2e)', () => {
       expect(res.status).toBe(200);
       const body = res.body as {
         cities: { value: string; count: number }[];
-        stores: { value: string; count: number }[];
         categories: { slug: string; name: string; count: number }[];
       };
 
       expect(body.cities).toContainEqual({ value: 'Bogotá', count: 2 });
-      expect(body.stores).toEqual(
-        expect.arrayContaining([
-          { value: 'Acme', count: 1 },
-          { value: 'Globex', count: 1 },
-        ]),
-      );
       expect(body.categories.find((c) => c.slug === 'technology')).toEqual({
         slug: 'technology',
         name: 'Technology',
@@ -619,6 +619,66 @@ describe('Offers flow (e2e)', () => {
       });
       expect(body.categories.find((c) => c.slug === 'home')?.count).toBe(1);
       expect(body.categories.find((c) => c.slug === 'travel')?.count).toBe(0);
+    });
+  });
+
+  describe('online offers', () => {
+    function postOffer(token: string, payload: Record<string, unknown>) {
+      return request(app.getHttpServer())
+        .post('/offers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          ...validOfferPayload(),
+          categoryIds: [categoryId],
+          ...payload,
+        });
+    }
+
+    it('creates an online offer with no city/location even if a location is sent', async () => {
+      const author = await registerUser('online@example.com', 'online');
+
+      const res = await postOffer(author.accessToken, {
+        isOnline: true,
+        externalUrl: 'https://shop.example.com/promo',
+      });
+
+      expect(res.status).toBe(201);
+      const body = res.body as OfferBody;
+      expect(body.isOnline).toBe(true);
+      expect(body.city).toBeNull();
+      expect(body.location).toBeNull();
+    });
+
+    it('rejects an online offer without externalUrl (offer.online_requires_url)', async () => {
+      const author = await registerUser('online2@example.com', 'online2');
+
+      const res = await postOffer(author.accessToken, { isOnline: true });
+
+      expect(res.status).toBe(400);
+      expect((res.body as ErrorBody).key).toBe('offer.online_requires_url');
+    });
+
+    it('filters offers by channel with ?online', async () => {
+      const author = await registerUser('online3@example.com', 'online3');
+      await postOffer(author.accessToken, {
+        isOnline: true,
+        externalUrl: 'https://shop.example.com/x',
+      });
+      await createOfferAs(author.accessToken); // physical
+
+      const onlineOnly = await request(app.getHttpServer()).get(
+        '/offers?online=true',
+      );
+      const onlineItems = (onlineOnly.body as ListBody).items;
+      expect(onlineItems).toHaveLength(1);
+      expect(onlineItems[0].isOnline).toBe(true);
+
+      const physicalOnly = await request(app.getHttpServer()).get(
+        '/offers?online=false',
+      );
+      const physicalItems = (physicalOnly.body as ListBody).items;
+      expect(physicalItems).toHaveLength(1);
+      expect(physicalItems[0].isOnline).toBe(false);
     });
   });
 });

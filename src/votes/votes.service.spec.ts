@@ -3,6 +3,7 @@ import { Offer, OfferStatus, Vote, VoteType } from '@prisma/client';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReputationService } from '../reputation/reputation.service';
 import { VotesService } from './votes.service';
 
 function buildOffer(overrides: Partial<Offer> = {}): Offer {
@@ -12,7 +13,6 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     description: 'Description',
     offerType: 'discount',
     externalUrl: null,
-    storeName: 'Store',
     city: 'Bogotá',
     startDate: new Date('2024-01-01T00:00:00Z'),
     endDate: new Date('2099-01-01T00:00:00Z'),
@@ -25,6 +25,9 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     disabledAt: null,
     deletedAt: null,
     createdById: 'author-1',
+    merchantId: 'merchant-1',
+    locationId: null,
+    isOnline: false,
     ...overrides,
   };
 }
@@ -58,6 +61,7 @@ describe('VotesService', () => {
   let service: VotesService;
   let offer: PrismaOfferMock;
   let vote: PrismaVoteMock;
+  let reputation: { points: jest.Mock; applyWithin: jest.Mock };
   let prisma: {
     offer: PrismaOfferMock;
     vote: PrismaVoteMock;
@@ -73,6 +77,10 @@ describe('VotesService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     };
+    reputation = {
+      points: jest.fn().mockReturnValue(2),
+      applyWithin: jest.fn(),
+    };
     prisma = {
       offer,
       vote,
@@ -80,7 +88,11 @@ describe('VotesService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [VotesService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        VotesService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ReputationService, useValue: reputation },
+      ],
     }).compile();
 
     service = module.get(VotesService);
@@ -213,6 +225,49 @@ describe('VotesService', () => {
 
       expect(prisma.$transaction).toHaveBeenCalled();
     });
+
+    it('rewards the offer author when a user adds an upvote', async () => {
+      offer.findUnique.mockResolvedValue(
+        buildOffer({ createdById: 'author-1' }),
+      );
+      vote.findUnique.mockResolvedValue(null);
+      offer.update.mockResolvedValue(buildOffer());
+
+      await service.cast('user-1', 'offer-1', VoteType.UP);
+
+      expect(reputation.applyWithin).toHaveBeenCalledWith(
+        prisma,
+        'author-1',
+        2,
+        {
+          reason: 'offerUpvote',
+          sourceType: 'offer_vote',
+          sourceId: 'offer-1',
+        },
+      );
+    });
+
+    it('does not touch reputation on a downvote', async () => {
+      offer.findUnique.mockResolvedValue(
+        buildOffer({ createdById: 'author-1' }),
+      );
+      vote.findUnique.mockResolvedValue(null);
+      offer.update.mockResolvedValue(buildOffer());
+
+      await service.cast('user-1', 'offer-1', VoteType.DOWN);
+
+      expect(reputation.applyWithin).not.toHaveBeenCalled();
+    });
+
+    it('does not reward self-upvotes', async () => {
+      offer.findUnique.mockResolvedValue(buildOffer({ createdById: 'user-1' }));
+      vote.findUnique.mockResolvedValue(null);
+      offer.update.mockResolvedValue(buildOffer());
+
+      await service.cast('user-1', 'offer-1', VoteType.UP);
+
+      expect(reputation.applyWithin).not.toHaveBeenCalled();
+    });
   });
 
   describe('withdraw', () => {
@@ -271,6 +326,27 @@ describe('VotesService', () => {
 
       await expect(service.withdraw('user-1', 'offer-1')).rejects.toMatchObject(
         { key: ErrorKey.VoteOfferNotVoteable },
+      );
+    });
+
+    it('takes back the author reward when an upvote is removed', async () => {
+      offer.findUnique.mockResolvedValue(
+        buildOffer({ createdById: 'author-1' }),
+      );
+      vote.findUnique.mockResolvedValue(buildVote({ type: VoteType.UP }));
+      offer.update.mockResolvedValue(buildOffer());
+
+      await service.withdraw('user-1', 'offer-1');
+
+      expect(reputation.applyWithin).toHaveBeenCalledWith(
+        prisma,
+        'author-1',
+        -2,
+        {
+          reason: 'offerUpvote',
+          sourceType: 'offer_vote',
+          sourceId: 'offer-1',
+        },
       );
     });
   });

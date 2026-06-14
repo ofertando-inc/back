@@ -5,6 +5,11 @@ import { AppException } from '../common/exceptions/app.exception';
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor.helper';
 import type { CountedPaginatedResult } from '../common/pagination/paginated-result.type';
+import {
+  LocationsService,
+  type LocationInput,
+} from '../merchants/locations.service';
+import { MerchantsService } from '../merchants/merchants.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import {
@@ -24,20 +29,81 @@ import type { OfferResponse } from './types/offer-response.type';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Default search radius for the "near me" filter when none is supplied.
+const DEFAULT_NEAR_RADIUS_KM = 10;
+const KM_PER_DEGREE_LAT = 111.32;
+
 // Facets reflect the publicly listable offers.
 const VISIBLE_OFFER = {
   status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
 } satisfies Prisma.OfferWhereInput;
 
+// Parses a "lat,lng" pair, rejecting malformed or out-of-range coordinates.
+function parseNearParam(near: string): { latitude: number; longitude: number } {
+  const [latRaw, lngRaw] = near.split(',');
+  const latitude = Number(latRaw);
+  const longitude = Number(lngRaw);
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    throw new AppException(ErrorKey.OfferInvalidNear, HttpStatus.BAD_REQUEST);
+  }
+
+  return { latitude, longitude };
+}
+
+// Square bounding box (degrees) around a point for a given radius in km. A fast,
+// index-friendly approximation of a circle; exact distance (Haversine/PostGIS)
+// is a planned evolution.
+function boundingBox(latitude: number, longitude: number, radiusKm: number) {
+  const latDelta = radiusKm / KM_PER_DEGREE_LAT;
+  const lngDelta = Math.min(
+    radiusKm / (KM_PER_DEGREE_LAT * Math.cos((latitude * Math.PI) / 180)),
+    180,
+  );
+
+  return {
+    minLat: latitude - latDelta,
+    maxLat: latitude + latDelta,
+    minLng: longitude - lngDelta,
+    maxLng: longitude + lngDelta,
+  };
+}
+
 type OfferWithResponseRelations = Offer & {
   createdBy: { username: string };
   votes?: { type: VoteType }[];
   categories: { id: string; slug: string; name: string }[];
+  merchant: {
+    id: string;
+    name: string;
+    verified: boolean;
+    blockedAt: Date | null;
+  };
+  location: {
+    id: string;
+    address: string;
+    city: string;
+    region: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    verified: boolean;
+  } | null;
 };
 
 @Injectable()
 export class OffersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly merchantsService: MerchantsService,
+    private readonly locationsService: LocationsService,
+  ) {}
 
   async create(dto: CreateOfferDto, userId: string): Promise<OfferResponse> {
     const startDate = new Date(dto.startDate);
@@ -47,17 +113,30 @@ export class OffersService {
     this.assertEndInFuture(endDate);
     const categoryIds = await this.resolveCategoryIds(dto.categoryIds);
 
+    const isOnline = dto.isOnline ?? false;
+    if (isOnline && !dto.externalUrl) {
+      throw new AppException(
+        ErrorKey.OfferOnlineRequiresUrl,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const merchantId = await this.resolveMerchantId(dto);
+    const location = await this.resolveLocation(merchantId, dto, isOnline);
+
     const offer = await this.prisma.offer.create({
       data: {
         title: dto.title,
         description: dto.description,
         offerType: dto.offerType,
         externalUrl: dto.externalUrl,
-        storeName: dto.storeName,
-        city: dto.city,
+        city: location?.city ?? null,
+        isOnline,
         startDate,
         endDate,
         createdById: userId,
+        merchantId,
+        locationId: location?.id ?? null,
         categories: { connect: categoryIds.map((id) => ({ id })) },
       },
       include: this.buildOfferResponseInclude(userId),
@@ -81,6 +160,51 @@ export class OffersService {
     return ids;
   }
 
+  // Resolves the merchant: an existing id, or a name (find-or-create).
+  private async resolveMerchantId(dto: {
+    merchantId?: string;
+    merchantName?: string;
+  }): Promise<string> {
+    if (dto.merchantId) {
+      await this.merchantsService.assertExists(dto.merchantId);
+      return dto.merchantId;
+    }
+    const merchant = await this.merchantsService.findOrCreate(
+      dto.merchantName ?? '',
+    );
+    return merchant.id;
+  }
+
+  // Resolves the physical location for a merchant. Online offers have none;
+  // physical ones need an existing location id or an inline address.
+  private async resolveLocation(
+    merchantId: string,
+    dto: { locationId?: string; location?: LocationInput },
+    isOnline: boolean,
+  ): Promise<{ id: string; city: string } | null> {
+    if (isOnline) {
+      return null;
+    }
+    if (dto.locationId) {
+      const location = await this.locationsService.findForMerchant(
+        dto.locationId,
+        merchantId,
+      );
+      return { id: location.id, city: location.city };
+    }
+    if (dto.location) {
+      const location = await this.locationsService.findOrCreate(
+        merchantId,
+        dto.location,
+      );
+      return { id: location.id, city: location.city };
+    }
+    throw new AppException(
+      ErrorKey.OfferLocationRequired,
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+
   async findById(
     id: string,
     viewerId?: string,
@@ -92,6 +216,9 @@ export class OffersService {
         status: options.includeNonActive
           ? { not: OfferStatus.DELETED }
           : { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+        // Public detail hides offers of blocked merchants (admins use
+        // includeNonActive to still reach them).
+        ...(options.includeNonActive ? {} : { merchant: { blockedAt: null } }),
       },
       include: this.buildOfferResponseInclude(viewerId),
     });
@@ -162,18 +289,12 @@ export class OffersService {
 
   async getFacets(): Promise<OfferFacets> {
     // Read-only aggregates — no transaction needed; run them concurrently.
-    const [cities, stores, categories] = await Promise.all([
+    const [cities, categories] = await Promise.all([
       this.prisma.offer.groupBy({
         by: ['city'],
-        where: VISIBLE_OFFER,
+        where: { ...VISIBLE_OFFER, city: { not: null } },
         _count: true,
         orderBy: { city: 'asc' },
-      }),
-      this.prisma.offer.groupBy({
-        by: ['storeName'],
-        where: VISIBLE_OFFER,
-        _count: true,
-        orderBy: { storeName: 'asc' },
       }),
       this.prisma.category.findMany({
         orderBy: { order: 'asc' },
@@ -186,8 +307,9 @@ export class OffersService {
     ]);
 
     return {
-      cities: cities.map((c) => ({ value: c.city, count: c._count })),
-      stores: stores.map((s) => ({ value: s.storeName, count: s._count })),
+      cities: cities.flatMap((c) =>
+        c.city === null ? [] : [{ value: c.city, count: c._count }],
+      ),
       categories: categories.map((c) => ({
         slug: c.slug,
         name: c.name,
@@ -231,6 +353,49 @@ export class OffersService {
         ? await this.resolveCategoryIds(dto.categoryIds)
         : undefined;
 
+    // Resulting online state (defaults to the current one when not toggled).
+    const willBeOnline = dto.isOnline ?? offer.isOnline;
+
+    if (willBeOnline) {
+      const externalUrl =
+        dto.externalUrl !== undefined ? dto.externalUrl : offer.externalUrl;
+      if (!externalUrl) {
+        throw new AppException(
+          ErrorKey.OfferOnlineRequiresUrl,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+    }
+
+    // Resolve the merchant only when (re)specified.
+    const merchantChanged =
+      dto.merchantId !== undefined || dto.merchantName !== undefined;
+    const merchantId = merchantChanged
+      ? await this.resolveMerchantId(dto)
+      : offer.merchantId;
+
+    // Resolve the location: cleared when online; (re)resolved when switching to
+    // physical, when the merchant changes, or when a new location is supplied;
+    // otherwise the current one is kept.
+    let locationData: {
+      locationId: string | null;
+      city: string | null;
+    } | null = null;
+    if (willBeOnline) {
+      locationData = { locationId: null, city: null };
+    } else if (
+      dto.locationId !== undefined ||
+      dto.location !== undefined ||
+      offer.isOnline ||
+      merchantChanged
+    ) {
+      const location = await this.resolveLocation(merchantId, dto, false);
+      locationData = {
+        locationId: location?.id ?? null,
+        city: location?.city ?? null,
+      };
+    }
+
     const updated = await this.prisma.offer.update({
       where: { id },
       data: {
@@ -238,12 +403,16 @@ export class OffersService {
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.offerType !== undefined && { offerType: dto.offerType }),
         ...(dto.externalUrl !== undefined && { externalUrl: dto.externalUrl }),
-        ...(dto.storeName !== undefined && { storeName: dto.storeName }),
-        ...(dto.city !== undefined && { city: dto.city }),
         ...(dto.startDate !== undefined && {
           startDate: new Date(dto.startDate),
         }),
         ...(dto.endDate !== undefined && { endDate: new Date(dto.endDate) }),
+        ...(dto.isOnline !== undefined && { isOnline: dto.isOnline }),
+        ...(merchantChanged && { merchantId }),
+        ...(locationData !== null && {
+          locationId: locationData.locationId,
+          city: locationData.city,
+        }),
         ...(categoryIds !== undefined && {
           categories: { set: categoryIds.map((id) => ({ id })) },
         }),
@@ -302,6 +471,20 @@ export class OffersService {
         select: { id: true, slug: true, name: true },
         orderBy: { order: 'asc' },
       },
+      merchant: {
+        select: { id: true, name: true, verified: true, blockedAt: true },
+      },
+      location: {
+        select: {
+          id: true,
+          address: true,
+          city: true,
+          region: true,
+          latitude: true,
+          longitude: true,
+          verified: true,
+        },
+      },
     };
 
     if (viewerId) {
@@ -316,13 +499,18 @@ export class OffersService {
   }
 
   private toOfferResponse(offer: OfferWithResponseRelations): OfferResponse {
-    const { createdBy, votes, categories, ...payload } = offer;
+    const { createdBy, votes, categories, merchant, location, ...payload } =
+      offer;
+
+    const { blockedAt, ...merchantPayload } = merchant;
 
     return {
       ...payload,
       createdByUsername: createdBy.username,
       userVote: votes?.[0]?.type ?? null,
       categories,
+      merchant: { ...merchantPayload, blocked: blockedAt !== null },
+      location,
     };
   }
 
@@ -346,6 +534,12 @@ export class OffersService {
           : { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] };
     }
 
+    // Public listings hide offers of blocked merchants; owners and admins keep
+    // seeing them (flagged blocked) so they know what happened.
+    if (!options.admin && !options.ownerId) {
+      where.merchant = { blockedAt: null };
+    }
+
     if (options.ownerId) {
       where.createdById = options.ownerId;
     }
@@ -353,8 +547,8 @@ export class OffersService {
     if (query.city) {
       where.city = query.city;
     }
-    if (query.store) {
-      where.storeName = query.store;
+    if (query.merchant) {
+      where.merchantId = query.merchant;
     }
     if (query.offerType) {
       where.offerType = query.offerType;
@@ -362,13 +556,32 @@ export class OffersService {
     if (query.category) {
       where.categories = { some: { slug: query.category } };
     }
+    if (query.online !== undefined) {
+      where.isOnline = query.online;
+    }
+    if (query.near) {
+      const { latitude, longitude } = parseNearParam(query.near);
+      const box = boundingBox(
+        latitude,
+        longitude,
+        query.radiusKm ?? DEFAULT_NEAR_RADIUS_KM,
+      );
+      // Restrict to offers whose location sits in the box. Online offers (no
+      // location) are naturally excluded.
+      where.location = {
+        is: {
+          latitude: { gte: box.minLat, lte: box.maxLat },
+          longitude: { gte: box.minLng, lte: box.maxLng },
+        },
+      };
+    }
 
     if (query.q) {
-      // Free-text search over title, description and store name.
+      // Free-text search over title, description and merchant name.
       where.OR = [
         { title: { contains: query.q, mode: 'insensitive' } },
         { description: { contains: query.q, mode: 'insensitive' } },
-        { storeName: { contains: query.q, mode: 'insensitive' } },
+        { merchant: { name: { contains: query.q, mode: 'insensitive' } } },
       ];
     }
 

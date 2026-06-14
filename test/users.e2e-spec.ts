@@ -92,8 +92,8 @@ describe('Users flow (e2e)', () => {
         title: 'An offer',
         description: 'A very compelling description',
         offerType: 'discount',
-        storeName: 'Acme',
-        city: 'Bogotá',
+        merchantName: 'Acme',
+        location: { address: 'Carrera 7', city: 'Bogotá' },
         startDate: futureIso(1),
         endDate: futureIso(7),
         categoryIds: [categoryId],
@@ -308,6 +308,34 @@ describe('Users flow (e2e)', () => {
 
       const withNew = await login('cp2@example.com', 'brand-new-password');
       expect(withNew.status).toBe(200);
+    });
+  });
+
+  describe('reputation', () => {
+    async function reputationOf(token: string): Promise<number> {
+      const res = await request(app.getHttpServer())
+        .get('/users/me')
+        .set('Authorization', `Bearer ${token}`);
+      return (res.body as { reputation: number }).reputation;
+    }
+
+    it('rewards the offer author on an upvote and takes it back on withdrawal', async () => {
+      const author = await registerUser('rep-a@example.com', 'repa');
+      const voter = await registerUser('rep-b@example.com', 'repb');
+      const offerId = await createOffer(author.accessToken);
+
+      expect(await reputationOf(author.accessToken)).toBe(0);
+
+      await request(app.getHttpServer())
+        .post(`/offers/${offerId}/votes`)
+        .set('Authorization', `Bearer ${voter.accessToken}`)
+        .send({ type: 'UP' });
+      expect(await reputationOf(author.accessToken)).toBe(2);
+
+      await request(app.getHttpServer())
+        .delete(`/offers/${offerId}/votes`)
+        .set('Authorization', `Bearer ${voter.accessToken}`);
+      expect(await reputationOf(author.accessToken)).toBe(0);
     });
   });
 });

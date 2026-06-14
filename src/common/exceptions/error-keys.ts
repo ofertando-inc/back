@@ -16,6 +16,17 @@ export const ErrorKey = {
   OfferInvalidDates: 'offer.invalid_dates',
   OfferInvalidStatusTransition: 'offer.invalid_status_transition',
   OfferInvalidCategory: 'offer.invalid_category',
+  OfferInvalidNear: 'offer.invalid_near',
+  OfferOnlineRequiresUrl: 'offer.online_requires_url',
+  OfferLocationRequired: 'offer.location_required',
+
+  MerchantNotFound: 'merchant.not_found',
+  MerchantMergeInvalid: 'merchant.merge_invalid',
+  MerchantNameTaken: 'merchant.name_taken',
+  LocationNotFound: 'location.not_found',
+  LocationInUse: 'location.in_use',
+
+  GeocodingUnavailable: 'geocoding.unavailable',
 
   VoteOfferNotVoteable: 'vote.offer_not_voteable',
 

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-15
+
+### Added
+
+- Added admin merchant blocking: `POST /admin/merchants/:id/block` and `POST /admin/merchants/:id/unblock` (`JwtAuthGuard + AdminGuard`) set/clear a `Merchant.blockedAt` and log `BLOCK_MERCHANT` / `UNBLOCK_MERCHANT`. A blocked merchant leaves public circulation (excluded from `GET /merchants` autocomplete and from public offer listings/detail) and its offers are flagged `merchant.blocked: true` on `OfferResponse` — a derived, reversible state (so an individual offer can later be blocked too). `MerchantResponse` exposes `blockedAt`, and `GET /admin/merchants` gains a `blocked` filter
+- Added admin editing of merchants and locations (`JwtAuthGuard + AdminGuard`): `PATCH /admin/merchants/:id` renames a merchant (recomputing the normalized name; `merchant.name_taken` if another merchant already uses it — use merge for duplicates), and `PATCH /admin/locations/:id` edits an address/coordinates (changing the city syncs the denormalized `city` on its offers)
+- Added admin location deletion: `DELETE /admin/locations/:id` removes an unused location; with offers still attached it returns `location.in_use` (409) unless a same-merchant `?reassignTo=<location id>` is given, in which case its offers are moved there (city synced) before it is deleted
+- Added admin moderation queues for merchants and locations: `GET /admin/merchants` (filters `verified`, `q`) and `GET /admin/locations` (filters `verified`, `merchant`), both cursor-paginated (newest first, `JwtAuthGuard + AdminGuard`). Locations are returned enriched with their `merchant { id, name }`. The front calls them with `verified=false` to populate the moderation queues
+- Added user reputation: a `User.reputation` counter (exposed on `PublicUser`, so it appears in `/users/me`, auth responses and admin user views) backed by a `ReputationEvent` ledger (`delta`, `reason`, `sourceType`, `sourceId`) for audit and idempotence. A configurable barème (`REPUTATION_*` env, defaults: offer upvote +2, comment upvote +1, report resolved +3, report dismissed −1, offer disabled −5) is applied atomically on existing flows: offer/comment upvotes reward the author (reversed on un-vote, never for self-votes); resolving a target's reports rewards each reporter while dismissing them penalizes them; disabling an offer for abuse penalizes its author
+- Added a `Merchant` model (brand: `name`, `nameNormalized`, `verified`) and a `Location` model (a physical address belonging to a merchant: `address`, `city`, `region?`, `latitude?`, `longitude?`, `verified`; 0..N per merchant). `Offer` now references a required `merchantId` and a nullable `locationId` (required for physical offers, null for online ones); the free-text `storeName` is removed and `Offer.city` is kept as a denormalized, nullable value derived from the location
+- Added a merchants module: `GET /merchants?q=` (public autocomplete over the name, accent/case-insensitive, hiding unverified orphans — only verified merchants or ones already attached to an offer surface), `GET /merchants/:id` (public, `merchant.not_found`) and `POST /merchants` (authenticated, find-or-create on the normalized name → no duplicates, created `verified: false`)
+- `POST`/`PATCH /offers` resolve a merchant by `merchantId` (existing) or `merchantName` (find-or-create), and — for physical offers — a location by `locationId` (existing, must belong to the merchant) or an inline `location { address, city, region?, latitude?, longitude? }` (find-or-create); a physical offer without a location returns `offer.location_required`. `OfferResponse` embeds `merchant { id, name, verified }` and `location { id, address, city, region, latitude, longitude, verified } | null`
+- Added `GET /geocode?q=` and `GET /geocode/reverse?lat=&lng=` (authenticated) returning Nominatim/OSM forward and reverse geocoding via a configurable `GeocodingService` (base URL, identifying User-Agent, throttle, timeout, in-memory cache, country restriction; native `fetch`, no new dependency); reverse returns a single suggestion (or null) to refresh the text address when the map pin moves; upstream failures surface as `geocoding.unavailable`
+- Added admin moderation for merchants/locations (`JwtAuthGuard + AdminGuard`): `PATCH /admin/merchants/:id/verify`, `PATCH /admin/locations/:id/verify`, and `POST /admin/merchants/merge` (moves the source's locations and offers to the target then deletes the duplicate; `merchant.merge_invalid` on a self-merge), recorded in the moderation log via new `VERIFY_MERCHANT` / `VERIFY_LOCATION` / `MERGE_MERCHANT` actions and `MERCHANT` / `LOCATION` target types
+- Extracted a reusable `ModerationLogService` (its own `ModerationLogModule`) from `ModerationService` (no behaviour change) so admin actions outside the moderation module record log entries atomically
+- Added online-only offers: `Offer.isOnline` (boolean, default false). `POST`/`PATCH /offers` accept `isOnline`; when true, the location is omitted (`city`/`locationId` null) and `externalUrl` becomes required (`offer.online_requires_url`). `OfferResponse` exposes `isOnline`, `GET /offers?online=true|false` filters by channel, online offers are excluded from `?near`, and city facets skip the null city
+- Extended `GET /offers` filters: `?merchant=<id>`, and `near=<lat,lng>&radiusKm=` (default 10 km, max 500) keeping only offers whose location is within range while preserving `sort`, cursor and `total` (`offer.invalid_near` for out-of-range coordinates; indexed bounding-box approximation, exact distance via Haversine/PostGIS planned)
+- Restricted geocoding results to a country via Nominatim `countrycodes` (default Colombia, `GEOCODING_COUNTRY_CODES=co`; empty lifts the restriction) so the picker no longer surfaces worldwide places
+- Added the geocoding environment variables (`GEOCODING_BASE_URL`, `GEOCODING_USER_AGENT`, `GEOCODING_COUNTRY_CODES`, `GEOCODING_LIMIT`, `GEOCODING_TIMEOUT_MS`, `GEOCODING_THROTTLE_MS`, `GEOCODING_CACHE_TTL_MS`) to `.env.example` and every compose file, with safe defaults
+
 ## [1.0.0] - 2026-06-12
 
 ### Added
@@ -274,6 +294,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[1.1.0]: https://github.com/ofertando-inc/back/releases/tag/v1.1.0
 [1.0.0]: https://github.com/ofertando-inc/back/releases/tag/v1.0.0
 [0.9.0]: https://github.com/ofertando-inc/back/releases/tag/v0.9.0
 [0.8.0]: https://github.com/ofertando-inc/back/releases/tag/v0.8.0

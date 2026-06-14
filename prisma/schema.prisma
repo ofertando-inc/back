@@ -60,12 +60,19 @@ enum ModerationAction {
   RESTORE_OFFER
   DISABLE_USER
   RESTORE_USER
+  VERIFY_MERCHANT
+  VERIFY_LOCATION
+  MERGE_MERCHANT
+  BLOCK_MERCHANT
+  UNBLOCK_MERCHANT
 }
 
 enum ModerationTargetType {
   COMMENT
   OFFER
   USER
+  MERCHANT
+  LOCATION
 }
 
 model User {
@@ -75,6 +82,7 @@ model User {
   passwordHash String
   role         UserRole   @default(USER)
   status       UserStatus @default(ACTIVE)
+  reputation   Int        @default(0)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -85,9 +93,24 @@ model User {
   comments         Comment[]
   commentVotes     CommentVote[]
   commentReports   CommentReport[]
-  moderationLogs   ModerationLog[] @relation("ModerationActor")
+  moderationLogs   ModerationLog[]   @relation("ModerationActor")
+  reputationEvents ReputationEvent[]
 
   @@map("users")
+}
+
+model ReputationEvent {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  delta      Int
+  reason     String
+  sourceType String
+  sourceId   String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@map("reputation_events")
 }
 
 model RefreshToken {
@@ -113,8 +136,8 @@ model Offer {
   description String
   offerType   String
   externalUrl String?
-  storeName   String
-  city        String
+  city        String?
+  isOnline    Boolean     @default(false)
   startDate   DateTime
   endDate     DateTime
   status       OfferStatus @default(ACTIVE)
@@ -128,6 +151,10 @@ model Offer {
 
   createdById String
   createdBy   User       @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  merchantId  String
+  merchant    Merchant   @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  locationId  String?
+  location    Location?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
   votes       Vote[]
   reports     Report[]
   comments    Comment[]
@@ -136,7 +163,45 @@ model Offer {
   @@index([status])
   @@index([createdById])
   @@index([city])
+  @@index([merchantId])
+  @@index([locationId])
   @@map("offers")
+}
+
+model Merchant {
+  id             String    @id @default(uuid())
+  name           String
+  nameNormalized String
+  verified       Boolean   @default(false)
+  blockedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  locations Location[]
+  offers    Offer[]
+
+  @@index([nameNormalized])
+  @@map("merchants")
+}
+
+model Location {
+  id         String   @id @default(uuid())
+  merchantId String
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  address    String
+  city       String
+  region     String?
+  latitude   Float?
+  longitude  Float?
+  verified   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  offers Offer[]
+
+  @@index([merchantId])
+  @@index([latitude, longitude])
+  @@map("locations")
 }
 
 model Category {

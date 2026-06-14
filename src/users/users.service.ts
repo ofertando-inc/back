@@ -26,6 +26,7 @@ export class UsersService {
     username: true,
     role: true,
     status: true,
+    reputation: true,
     createdAt: true,
     updatedAt: true,
   } satisfies Prisma.UserSelect;

@@ -3,6 +3,7 @@ import { Comment, CommentVote, VoteType } from '@prisma/client';
 
 import { ErrorKey } from '../common/exceptions/error-keys';
 import { PrismaService } from '../prisma/prisma.service';
+import { ReputationService } from '../reputation/reputation.service';
 import { CommentVotesService } from './comment-votes.service';
 
 function buildComment(overrides: Partial<Comment> = {}): Comment {
@@ -53,6 +54,7 @@ describe('CommentVotesService', () => {
   let service: CommentVotesService;
   let comment: PrismaCommentMock;
   let commentVote: PrismaCommentVoteMock;
+  let reputation: { points: jest.Mock; applyWithin: jest.Mock };
   let prisma: {
     comment: PrismaCommentMock;
     commentVote: PrismaCommentVoteMock;
@@ -67,6 +69,10 @@ describe('CommentVotesService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     };
+    reputation = {
+      points: jest.fn().mockReturnValue(2),
+      applyWithin: jest.fn(),
+    };
     prisma = {
       comment,
       commentVote,
@@ -77,6 +83,7 @@ describe('CommentVotesService', () => {
       providers: [
         CommentVotesService,
         { provide: PrismaService, useValue: prisma },
+        { provide: ReputationService, useValue: reputation },
       ],
     }).compile();
 
@@ -192,6 +199,49 @@ describe('CommentVotesService', () => {
 
       expect(prisma.$transaction).toHaveBeenCalled();
     });
+
+    it('rewards the comment author when a user adds an upvote', async () => {
+      comment.findUnique.mockResolvedValue(
+        buildComment({ userId: 'author-1' }),
+      );
+      commentVote.findUnique.mockResolvedValue(null);
+      comment.update.mockResolvedValue(buildComment());
+
+      await service.cast('user-1', 'comment-1', VoteType.UP);
+
+      expect(reputation.applyWithin).toHaveBeenCalledWith(
+        prisma,
+        'author-1',
+        2,
+        {
+          reason: 'commentUpvote',
+          sourceType: 'comment_vote',
+          sourceId: 'comment-1',
+        },
+      );
+    });
+
+    it('does not touch reputation on a downvote', async () => {
+      comment.findUnique.mockResolvedValue(
+        buildComment({ userId: 'author-1' }),
+      );
+      commentVote.findUnique.mockResolvedValue(null);
+      comment.update.mockResolvedValue(buildComment());
+
+      await service.cast('user-1', 'comment-1', VoteType.DOWN);
+
+      expect(reputation.applyWithin).not.toHaveBeenCalled();
+    });
+
+    it('does not reward self-upvotes', async () => {
+      comment.findUnique.mockResolvedValue(buildComment({ userId: 'user-1' }));
+      commentVote.findUnique.mockResolvedValue(null);
+      comment.update.mockResolvedValue(buildComment());
+
+      await service.cast('user-1', 'comment-1', VoteType.UP);
+
+      expect(reputation.applyWithin).not.toHaveBeenCalled();
+    });
   });
 
   describe('withdraw', () => {
@@ -246,6 +296,29 @@ describe('CommentVotesService', () => {
 
       await expect(service.withdraw('user-1', 'missing')).rejects.toMatchObject(
         { key: ErrorKey.CommentNotFound },
+      );
+    });
+
+    it('takes back the author reward when an upvote is removed', async () => {
+      comment.findUnique.mockResolvedValue(
+        buildComment({ userId: 'author-1' }),
+      );
+      commentVote.findUnique.mockResolvedValue(
+        buildVote({ type: VoteType.UP }),
+      );
+      comment.update.mockResolvedValue(buildComment());
+
+      await service.withdraw('user-1', 'comment-1');
+
+      expect(reputation.applyWithin).toHaveBeenCalledWith(
+        prisma,
+        'author-1',
+        -2,
+        {
+          reason: 'commentUpvote',
+          sourceType: 'comment_vote',
+          sourceId: 'comment-1',
+        },
       );
     });
   });
