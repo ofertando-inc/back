@@ -10,10 +10,9 @@ import type { AuthenticatedRequest } from '../../modules/identity/auth/types/aut
 import { AppException } from '../exceptions/app.exception';
 import { ErrorKey } from '../exceptions/error-keys';
 
-// Moderation gate: ADMIN and ROOT both moderate; ROOT-only management routes
-// use RootGuard instead.
+// Super-admin gate: account management and claim decisions are ROOT-only.
 @Injectable()
-export class AdminGuard implements CanActivate {
+export class RootGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = req.user;
@@ -25,8 +24,8 @@ export class AdminGuard implements CanActivate {
       );
     }
 
-    if (user.role !== UserRole.ADMIN && user.role !== UserRole.ROOT) {
-      throw new AppException(ErrorKey.AuthForbidden, HttpStatus.FORBIDDEN);
+    if (user.role !== UserRole.ROOT) {
+      throw new AppException(ErrorKey.AuthForbiddenRoot, HttpStatus.FORBIDDEN);
     }
 
     return true;
