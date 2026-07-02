@@ -1,8 +1,8 @@
 import { ExecutionContext } from '@nestjs/common';
 import { UserRole, UserStatus } from '@prisma/client';
 
-import type { AuthenticatedRequest } from '../../auth/types/authenticated-request.type';
-import type { PublicUser } from '../../users/types/public-user.type';
+import type { AuthenticatedRequest } from '../../modules/identity/auth/types/authenticated-request.type';
+import type { PublicUser } from '../../modules/identity/users/types/public-user.type';
 import { AppException } from '../exceptions/app.exception';
 import { ErrorKey } from '../exceptions/error-keys';
 import { AdminGuard } from './admin.guard';

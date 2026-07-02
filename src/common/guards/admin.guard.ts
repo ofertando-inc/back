@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 
-import type { AuthenticatedRequest } from '../../auth/types/authenticated-request.type';
+import type { AuthenticatedRequest } from '../../modules/identity/auth/types/authenticated-request.type';
 import { AppException } from '../exceptions/app.exception';
 import { ErrorKey } from '../exceptions/error-keys';
 
