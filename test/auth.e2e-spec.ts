@@ -229,8 +229,7 @@ describe('Auth flow (e2e)', () => {
     });
 
     const setCookieRaw = registerResponse.headers['set-cookie'] as unknown as
-      | string
-      | string[];
+      string | string[];
     const cookies = Array.isArray(setCookieRaw) ? setCookieRaw : [setCookieRaw];
     const response = await request(app.getHttpServer())
       .get('/users/me')
@@ -296,8 +295,7 @@ describe('Auth flow (e2e)', () => {
       expect(response.status).toBe(204);
 
       const setCookieRaw = response.headers['set-cookie'] as unknown as
-        | string
-        | string[];
+        string | string[];
       const cookies = Array.isArray(setCookieRaw)
         ? setCookieRaw
         : [setCookieRaw];
