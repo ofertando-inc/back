@@ -96,4 +96,26 @@ export class OffersController {
   async remove(@Param('id') id: string): Promise<void> {
     await this.offersService.softDelete(id);
   }
+
+  // Public tracking, fire-and-forget from the front: a detail view.
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post(':id/view')
+  trackView(
+    @Param('id') id: string,
+    @CurrentUser() user?: PublicUser,
+  ): Promise<void> {
+    return this.offersService.trackView(id, user?.id);
+  }
+
+  // Public tracking: a click on the merchant redirect / external link.
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(OptionalJwtAuthGuard)
+  @Post(':id/click')
+  trackClick(
+    @Param('id') id: string,
+    @CurrentUser() user?: PublicUser,
+  ): Promise<void> {
+    return this.offersService.trackClick(id, user?.id);
+  }
 }

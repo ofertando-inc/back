@@ -96,6 +96,7 @@ export class AuthService {
       email: user.email,
       username: user.username,
       role: user.role,
+      accountType: user.accountType,
       status: user.status,
       reputation: user.reputation,
       createdAt: user.createdAt,

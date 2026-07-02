@@ -128,6 +128,25 @@ Apply existing migrations in deployed environments:
 npx prisma migrate deploy
 ```
 
+## Bootstrap the ROOT account
+
+Every account (including business ones) is created from the ROOT back-office,
+so a first ROOT account must be seeded once per environment:
+
+```bash
+npm run seed:root -- root@example.com rootuser <password>
+```
+
+Or via environment variables (`ROOT_EMAIL`, `ROOT_USERNAME`, `ROOT_PASSWORD`):
+
+```bash
+ROOT_EMAIL=root@example.com ROOT_USERNAME=rootuser ROOT_PASSWORD=<password> npm run seed:root
+```
+
+The script is idempotent: if the email already exists, the user is promoted to
+ROOT instead (nothing to do if already ROOT). In a deployed container, run it
+with `docker exec` inside the backend container.
+
 ## Tests
 
 Run unit tests:

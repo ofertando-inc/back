@@ -1,5 +1,5 @@
 import { ExecutionContext } from '@nestjs/common';
-import { UserRole, UserStatus } from '@prisma/client';
+import { AccountType, UserRole, UserStatus } from '@prisma/client';
 
 import type { AuthenticatedRequest } from '../../modules/identity/auth/types/authenticated-request.type';
 import type { PublicUser } from '../../modules/identity/users/types/public-user.type';
@@ -38,6 +38,7 @@ const baseUser: PublicUser = {
   role: UserRole.USER,
   status: UserStatus.ACTIVE,
   reputation: 0,
+  accountType: AccountType.INDIVIDUAL,
   createdAt: new Date('2020-01-01T00:00:00Z'),
   updatedAt: new Date('2020-01-01T00:00:00Z'),
 };

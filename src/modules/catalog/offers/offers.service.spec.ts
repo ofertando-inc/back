@@ -43,6 +43,9 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     score: 0,
     reportCount: 0,
     commentCount: 0,
+    viewCount: 0,
+    clickCount: 0,
+    official: false,
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     disabledAt: null,
@@ -105,6 +108,7 @@ type PrismaOfferMock = {
   findUnique: jest.Mock;
   findMany: jest.Mock;
   update: jest.Mock;
+  updateMany: jest.Mock;
   count: jest.Mock;
   groupBy: jest.Mock;
 };
@@ -113,6 +117,7 @@ describe('OffersService', () => {
   let service: OffersService;
   let prismaOffer: PrismaOfferMock;
   let prismaCategory: { count: jest.Mock; findMany: jest.Mock };
+  let prismaMerchant: { findUnique: jest.Mock };
   let merchantsService: { assertExists: jest.Mock; findOrCreate: jest.Mock };
   let locationsService: {
     findForMerchant: jest.Mock;
@@ -126,12 +131,17 @@ describe('OffersService', () => {
       findUnique: jest.fn(),
       findMany: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       count: jest.fn().mockResolvedValue(0),
       groupBy: jest.fn(),
     };
     prismaCategory = {
       count: jest.fn().mockResolvedValue(1),
       findMany: jest.fn(),
+    };
+    prismaMerchant = {
+      // No owner by default: community offers are not official.
+      findUnique: jest.fn().mockResolvedValue({ ownerId: null }),
     };
     merchantsService = {
       assertExists: jest.fn(),
@@ -156,6 +166,7 @@ describe('OffersService', () => {
           useValue: {
             offer: prismaOffer,
             category: prismaCategory,
+            merchant: prismaMerchant,
             $transaction: jest.fn((ops: Promise<unknown>[]) =>
               Promise.all(ops),
             ),
@@ -1123,6 +1134,92 @@ describe('OffersService', () => {
       expect(result.categories).toEqual([
         { slug: 'technology', name: 'Technology', count: 2 },
       ]);
+    });
+  });
+
+  describe('official offers', () => {
+    const futureStart = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    const futureEnd = new Date(Date.now() + 48 * 3600 * 1000).toISOString();
+
+    it('marks the offer official when the author owns the merchant', async () => {
+      prismaMerchant.findUnique.mockResolvedValue({ ownerId: 'biz-1' });
+      prismaOffer.create.mockResolvedValue(buildOfferWithRelations());
+
+      await service.create(
+        {
+          title: 'Official promo',
+          description: 'Directly from the brand',
+          offerType: 'discount',
+          merchantId: 'merchant-1',
+          isOnline: true,
+          externalUrl: 'https://acme.co',
+          startDate: futureStart,
+          endDate: futureEnd,
+          categoryIds: ['11111111-1111-1111-1111-111111111111'],
+        } as CreateOfferDto,
+        'biz-1',
+      );
+
+      expect(prismaOffer.create).toHaveBeenCalledWith(
+        objectContaining({ data: objectContaining({ official: true }) }),
+      );
+    });
+
+    it('keeps a community offer unofficial even on an owned merchant', async () => {
+      prismaMerchant.findUnique.mockResolvedValue({ ownerId: 'biz-1' });
+      prismaOffer.create.mockResolvedValue(buildOfferWithRelations());
+
+      await service.create(
+        {
+          title: 'Community find',
+          description: 'Someone spotted this deal',
+          offerType: 'discount',
+          merchantId: 'merchant-1',
+          isOnline: true,
+          externalUrl: 'https://acme.co',
+          startDate: futureStart,
+          endDate: futureEnd,
+          categoryIds: ['11111111-1111-1111-1111-111111111111'],
+        } as CreateOfferDto,
+        'random-user',
+      );
+
+      expect(prismaOffer.create).toHaveBeenCalledWith(
+        objectContaining({ data: objectContaining({ official: false }) }),
+      );
+    });
+  });
+
+  describe('tracking', () => {
+    it('increments viewCount only on publicly visible offers', async () => {
+      await service.trackView('offer-1');
+
+      expect(prismaOffer.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'offer-1',
+          status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+          merchant: { blockedAt: null },
+        },
+        data: { viewCount: { increment: 1 } },
+      });
+    });
+
+    it('never counts the author own hits', async () => {
+      await service.trackView('offer-1', 'viewer-9');
+
+      expect(prismaOffer.updateMany).toHaveBeenCalledWith(
+        objectContaining({
+          where: objectContaining({ createdById: { not: 'viewer-9' } }),
+        }),
+      );
+    });
+
+    it('increments clickCount on a redirect click', async () => {
+      await service.trackClick('offer-1');
+
+      expect(prismaOffer.updateMany).toHaveBeenCalledWith(
+        objectContaining({ data: { clickCount: { increment: 1 } } }),
+      );
     });
   });
 });

@@ -25,6 +25,7 @@ export class UsersService {
     email: true,
     username: true,
     role: true,
+    accountType: true,
     status: true,
     reputation: true,
     createdAt: true,

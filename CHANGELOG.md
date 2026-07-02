@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-03
+
+### Added
+
+- Added business accounts and a ROOT role. `User` gains an `accountType` (`INDIVIDUAL` default / `BUSINESS`, exposed on `PublicUser`) and `UserRole` gains `ROOT` (super-admin above ADMIN; `AdminGuard` now accepts ADMIN and ROOT for moderation, while new ROOT-only routes use a `RootGuard` → `auth.forbidden_root`). Business accounts are created only by a ROOT (no business self-registration); the initial ROOT is seeded with `npm run seed:root` (args or `ROOT_*` env, idempotent — documented in the README)
+- Added the ROOT back-office (`JwtAuthGuard + RootGuard`): `GET /admin/accounts` (cursor-paginated, filters `q`, `role`, `accountType`, `status`), `POST /admin/accounts` (creates an INDIVIDUAL or BUSINESS account with a provisional password) and `PATCH /admin/accounts/:id` (edit email/username/password/role/accountType or disable via `status`) — every decision is logged (`CREATE_ACCOUNT` / `UPDATE_ACCOUNT` in the moderation log)
+- Added merchant affiliation via a `MerchantClaim` model (`PENDING`/`APPROVED`/`REJECTED`, applicant, merchant, reviewer, `note`, `resolvedAt`): `GET /admin/claims?status=PENDING` (queue), `POST /admin/claims` (direct onboarding: creates the claim already APPROVED), `PATCH /admin/claims/:id/approve` / `:id/reject` (ROOT-only, logged `APPROVE_MERCHANT_CLAIM` / `REJECT_MERCHANT_CLAIM`). Business rules enforced in service: one owner per merchant (`merchant.already_owned`), one brand per business (`claim.user_already_affiliated`), no double resolution (`claim.already_resolved`); the approval denormalizes `Merchant.ownerId` for fast ownership checks
+- Added the business space (`JwtAuthGuard + BusinessGuard` — BUSINESS account with an approved claim, else `account.not_business` / `account.no_affiliation`): `GET /business/me` (account + affiliated brand + claim), `POST /business/offers` (publishes for its own brand: the merchant is forced server-side and the offer is created `official: true`; merchant fields are rejected by validation), `POST /business/locations` (address-addition request: created `verified: false`, it lands in the existing admin verification queue) and `GET /business/stats` (aggregates: offers total/active, views, clicks, score, comments, reports)
+- Added official offers: `Offer.official` (default false, exposed on `OfferResponse`). An offer is official when its author is the business account owning the merchant — computed automatically at creation (and recomputed if an update changes the merchant), so the community path is unchanged
+- Added view/click tracking: `Offer.viewCount` / `Offer.clickCount` with lightweight public endpoints `POST /offers/:id/view` and `POST /offers/:id/click` (204, fire-and-forget; only publicly visible offers count and the author's own hits are ignored; global throttling applies)
+
 ## [1.1.1] - 2026-07-02
 
 ### Changed
@@ -304,6 +315,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[1.2.0]: https://github.com/ofertando-inc/back/releases/tag/v1.2.0
 [1.1.1]: https://github.com/ofertando-inc/back/releases/tag/v1.1.1
 [1.1.0]: https://github.com/ofertando-inc/back/releases/tag/v1.1.0
 [1.0.0]: https://github.com/ofertando-inc/back/releases/tag/v1.0.0
