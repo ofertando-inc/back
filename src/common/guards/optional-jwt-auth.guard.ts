@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
-import type { PublicUser } from '../../users/types/public-user.type';
+import type { PublicUser } from '../../modules/identity/users/types/public-user.type';
 
 @Injectable()
 export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
