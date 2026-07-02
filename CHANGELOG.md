@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Regrouped the feature modules into four domain modules (bounded contexts) under `src/modules/` — `identity` (auth, users, reputation), `catalog` (offers, merchants/locations, categories, geocoding), `community` (votes, reports, comments) and `moderation` (moderation + its audit log) — each exposing a container module (`identity.module.ts`, `catalog.module.ts`, `community.module.ts`, `moderation.module.ts`) that `AppModule` now imports instead of the eleven feature modules. Pure internal reorganization: the API routes, Prisma schema, DTOs and behaviour are unchanged (the app stays a modular monolith; `prisma`, `common` and `config` remain transverse at the root of `src/`)
 
+### Security
+
+- Cleared every `npm audit` advisory (the scheduled audit workflow fails on high/critical, and 7 high ones had accumulated): bumped the transitive `form-data` (CRLF injection, GHSA-hmw2-7cc7-3qxx) and `hono` (Prisma dev tooling; path traversal and CORS advisories) via `npm audit fix`, and added a `multer` `^2.2.0` package override — `@nestjs/platform-express` still pins `2.1.1`, which is vulnerable to two denial-of-service advisories (GHSA-72gw-mp4g-v24j, GHSA-3p4h-7m6x-2hcm); the override can be dropped once Nest bumps it. The app does not handle file uploads, so the multer exposure was theoretical; `npm audit` now reports zero vulnerabilities
+
 ## [1.1.0] - 2026-06-15
 
 ### Added
@@ -300,6 +304,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[1.1.1]: https://github.com/ofertando-inc/back/releases/tag/v1.1.1
 [1.1.0]: https://github.com/ofertando-inc/back/releases/tag/v1.1.0
 [1.0.0]: https://github.com/ofertando-inc/back/releases/tag/v1.0.0
 [0.9.0]: https://github.com/ofertando-inc/back/releases/tag/v0.9.0
