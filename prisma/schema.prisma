@@ -9,6 +9,18 @@ datasource db {
 enum UserRole {
   USER
   ADMIN
+  ROOT
+}
+
+enum AccountType {
+  INDIVIDUAL
+  BUSINESS
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum UserStatus {
@@ -65,6 +77,10 @@ enum ModerationAction {
   MERGE_MERCHANT
   BLOCK_MERCHANT
   UNBLOCK_MERCHANT
+  APPROVE_MERCHANT_CLAIM
+  REJECT_MERCHANT_CLAIM
+  CREATE_ACCOUNT
+  UPDATE_ACCOUNT
 }
 
 enum ModerationTargetType {
@@ -73,18 +89,20 @@ enum ModerationTargetType {
   USER
   MERCHANT
   LOCATION
+  MERCHANT_CLAIM
 }
 
 model User {
-  id           String     @id @default(uuid())
-  email        String     @unique
-  username     String     @unique
+  id           String      @id @default(uuid())
+  email        String      @unique
+  username     String      @unique
   passwordHash String
-  role         UserRole   @default(USER)
-  status       UserStatus @default(ACTIVE)
-  reputation   Int        @default(0)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  role         UserRole    @default(USER)
+  accountType  AccountType @default(INDIVIDUAL)
+  status       UserStatus  @default(ACTIVE)
+  reputation   Int         @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   offers           Offer[]
   votes            Vote[]
@@ -95,8 +113,34 @@ model User {
   commentReports   CommentReport[]
   moderationLogs   ModerationLog[]   @relation("ModerationActor")
   reputationEvents ReputationEvent[]
+  merchantClaims   MerchantClaim[]   @relation("ClaimApplicant")
+  reviewedClaims   MerchantClaim[]   @relation("ClaimReviewer")
+  ownedMerchants   Merchant[]        @relation("MerchantOwner")
 
   @@map("users")
+}
+
+// An affiliation request between a business account and a merchant. At most
+// one APPROVED claim per merchant (enforced in service, mirrored on
+// Merchant.ownerId).
+model MerchantClaim {
+  id         String      @id @default(uuid())
+  status     ClaimStatus @default(PENDING)
+  note       String?
+  createdAt  DateTime    @default(now())
+  resolvedAt DateTime?
+
+  userId       String
+  user         User     @relation("ClaimApplicant", fields: [userId], references: [id], onDelete: Cascade)
+  merchantId   String
+  merchant     Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  reviewedById String?
+  reviewedBy   User?    @relation("ClaimReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([userId])
+  @@index([merchantId])
+  @@map("merchant_claims")
 }
 
 model ReputationEvent {
@@ -138,12 +182,15 @@ model Offer {
   externalUrl String?
   city        String?
   isOnline    Boolean     @default(false)
+  official    Boolean     @default(false)
   startDate   DateTime
   endDate     DateTime
   status       OfferStatus @default(ACTIVE)
   score        Int         @default(0)
   reportCount  Int         @default(0)
   commentCount Int         @default(0)
+  viewCount    Int         @default(0)
+  clickCount   Int         @default(0)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
   disabledAt   DateTime?
@@ -177,10 +224,17 @@ model Merchant {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  // Denormalized owner (the business account whose claim was approved), for
+  // fast ownership checks; source of truth is the APPROVED MerchantClaim.
+  ownerId String?
+  owner   User?   @relation("MerchantOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
   locations Location[]
   offers    Offer[]
+  claims    MerchantClaim[]
 
   @@index([nameNormalized])
+  @@index([ownerId])
   @@map("merchants")
 }
 

@@ -1,7 +1,13 @@
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
-import { RefreshToken, User, UserRole, UserStatus } from '@prisma/client';
+import {
+  AccountType,
+  RefreshToken,
+  User,
+  UserRole,
+  UserStatus,
+} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 import { ErrorKey } from '../../../common/exceptions/error-keys';
@@ -30,6 +36,7 @@ describe('AuthService', () => {
     role: UserRole.USER,
     status: UserStatus.ACTIVE,
     reputation: 0,
+    accountType: AccountType.INDIVIDUAL,
     createdAt: new Date('2020-01-01T00:00:00Z'),
     updatedAt: new Date('2020-01-01T00:00:00Z'),
   };
@@ -39,6 +46,7 @@ describe('AuthService', () => {
     email: fullUser.email,
     username: fullUser.username,
     role: fullUser.role,
+    accountType: fullUser.accountType,
     status: fullUser.status,
     reputation: fullUser.reputation,
     createdAt: fullUser.createdAt,

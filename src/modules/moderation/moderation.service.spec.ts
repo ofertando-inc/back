@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
+  AccountType,
   Comment,
   CommentReportReason,
   Offer,
@@ -67,6 +68,9 @@ function buildOffer(overrides: Partial<Offer> = {}): Offer {
     score: 0,
     reportCount: 0,
     commentCount: 0,
+    viewCount: 0,
+    clickCount: 0,
+    official: false,
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     disabledAt: null,
@@ -87,6 +91,7 @@ function buildPublicUser(overrides: Partial<PublicUser> = {}): PublicUser {
     role: UserRole.USER,
     status: UserStatus.ACTIVE,
     reputation: 0,
+    accountType: AccountType.INDIVIDUAL,
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     ...overrides,
