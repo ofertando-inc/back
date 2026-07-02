@@ -126,6 +126,7 @@ export class OffersService {
 
     const merchantId = await this.resolveMerchantId(dto);
     const location = await this.resolveLocation(merchantId, dto, isOnline);
+    const official = await this.isOwnedBy(merchantId, userId);
 
     const offer = await this.prisma.offer.create({
       data: {
@@ -135,6 +136,7 @@ export class OffersService {
         externalUrl: dto.externalUrl,
         city: location?.city ?? null,
         isOnline,
+        official,
         startDate,
         endDate,
         createdById: userId,
@@ -146,6 +148,19 @@ export class OffersService {
     });
 
     return this.toOfferResponse(offer);
+  }
+
+  // An offer is official when its author is the business account owning the
+  // merchant (approved affiliation claim).
+  private async isOwnedBy(
+    merchantId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const merchant = await this.prisma.merchant.findUnique({
+      where: { id: merchantId },
+      select: { ownerId: true },
+    });
+    return merchant?.ownerId !== null && merchant?.ownerId === userId;
   }
 
   // Validates that the given category ids all exist and returns them deduped.
@@ -370,12 +385,16 @@ export class OffersService {
       }
     }
 
-    // Resolve the merchant only when (re)specified.
+    // Resolve the merchant only when (re)specified; a merchant change
+    // recomputes the official flag against the offer's author.
     const merchantChanged =
       dto.merchantId !== undefined || dto.merchantName !== undefined;
     const merchantId = merchantChanged
       ? await this.resolveMerchantId(dto)
       : offer.merchantId;
+    const official = merchantChanged
+      ? await this.isOwnedBy(merchantId, offer.createdById)
+      : undefined;
 
     // Resolve the location: cleared when online; (re)resolved when switching to
     // physical, when the merchant changes, or when a new location is supplied;
@@ -412,6 +431,7 @@ export class OffersService {
         ...(dto.endDate !== undefined && { endDate: new Date(dto.endDate) }),
         ...(dto.isOnline !== undefined && { isOnline: dto.isOnline }),
         ...(merchantChanged && { merchantId }),
+        ...(official !== undefined && { official }),
         ...(locationData !== null && {
           locationId: locationData.locationId,
           city: locationData.city,
@@ -686,5 +706,32 @@ export class OffersService {
       id: offer.id,
     };
     return encodeCursor(payload);
+  }
+
+  trackView(id: string, viewerId?: string): Promise<void> {
+    return this.track(id, 'viewCount', viewerId);
+  }
+
+  trackClick(id: string, viewerId?: string): Promise<void> {
+    return this.track(id, 'clickCount', viewerId);
+  }
+
+  // Lightweight public counter: only counts publicly visible offers and never
+  // the author's own hits; silently no-ops otherwise (no existence check, the
+  // endpoint stays cheap and unexploitable for probing).
+  private async track(
+    id: string,
+    field: 'viewCount' | 'clickCount',
+    viewerId?: string,
+  ): Promise<void> {
+    await this.prisma.offer.updateMany({
+      where: {
+        id,
+        status: { in: [OfferStatus.ACTIVE, OfferStatus.EXPIRED] },
+        merchant: { blockedAt: null },
+        ...(viewerId ? { createdById: { not: viewerId } } : {}),
+      },
+      data: { [field]: { increment: 1 } },
+    });
   }
 }
