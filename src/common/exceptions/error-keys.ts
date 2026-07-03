@@ -1,8 +1,17 @@
 export const ErrorKey = {
   AuthUnauthorized: 'auth.unauthorized',
   AuthForbidden: 'auth.forbidden',
+  AuthForbiddenRoot: 'auth.forbidden_root',
   AuthInvalidCredentials: 'auth.invalid_credentials',
   AuthAccountDisabled: 'auth.account_disabled',
+
+  AccountNotFound: 'account.not_found',
+  AccountNotBusiness: 'account.not_business',
+  AccountNoAffiliation: 'account.no_affiliation',
+
+  ClaimNotFound: 'claim.not_found',
+  ClaimAlreadyResolved: 'claim.already_resolved',
+  ClaimUserAlreadyAffiliated: 'claim.user_already_affiliated',
 
   UserEmailTaken: 'user.email_taken',
   UserUsernameTaken: 'user.username_taken',
@@ -23,6 +32,7 @@ export const ErrorKey = {
   MerchantNotFound: 'merchant.not_found',
   MerchantMergeInvalid: 'merchant.merge_invalid',
   MerchantNameTaken: 'merchant.name_taken',
+  MerchantAlreadyOwned: 'merchant.already_owned',
   LocationNotFound: 'location.not_found',
   LocationInUse: 'location.in_use',
 

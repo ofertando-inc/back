@@ -953,6 +953,34 @@
             }
           },
           "response": []
+        },
+        {
+          "name": "Track view",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/view",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "{{offerId}}", "view"]
+            },
+            "description": "Public, fire-and-forget (204). Increments viewCount on a publicly visible offer; the author's own hits are never counted (send the JWT to be recognized)."
+          },
+          "response": []
+        },
+        {
+          "name": "Track click",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/offers/{{offerId}}/click",
+              "host": ["{{baseUrl}}"],
+              "path": ["offers", "{{offerId}}", "click"]
+            },
+            "description": "Public, fire-and-forget (204). Increments clickCount when the user clicks through to the merchant / external link; the author's own clicks are never counted."
+          },
+          "response": []
         }
       ]
     },
@@ -1668,6 +1696,230 @@
               ]
             },
             "description": "Admin only. Audit trail of moderation decisions: { id, action, targetType, targetId, reason, note, createdAt, actor{id,username} }, newest first. Every hide/dismiss/restore/disable records an entry with the acting admin and the optional reason/note."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Root",
+      "item": [
+        {
+          "name": "List accounts (root)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "accounts"],
+              "query": [
+                { "key": "q", "value": "", "disabled": true },
+                {
+                  "key": "role",
+                  "value": "USER",
+                  "description": "USER | ADMIN | ROOT",
+                  "disabled": true
+                },
+                {
+                  "key": "accountType",
+                  "value": "BUSINESS",
+                  "description": "INDIVIDUAL | BUSINESS",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "ACTIVE",
+                  "description": "ACTIVE | DISABLED",
+                  "disabled": true
+                },
+                { "key": "cursor", "value": "", "disabled": true },
+                { "key": "limit", "value": "20", "disabled": true }
+              ]
+            },
+            "description": "JWT + ROOT. Cursor-paginated accounts (newest first) -> { items: PublicUser[], nextCursor }. Filters: ?q= (email/username), ?role=, ?accountType=, ?status=."
+          },
+          "response": []
+        },
+        {
+          "name": "Create account (root)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"contact@acme.co\",\n  \"username\": \"acme\",\n  \"password\": \"provisional123\",\n  \"accountType\": \"BUSINESS\",\n  \"role\": \"USER\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "accounts"]
+            },
+            "description": "JWT + ROOT. Creates an account (INDIVIDUAL or BUSINESS) with a provisional password; accountType/role optional (default INDIVIDUAL/USER). Logs CREATE_ACCOUNT. user.email_taken / user.username_taken on conflicts."
+          },
+          "response": []
+        },
+        {
+          "name": "Edit account (root)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DISABLED\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/accounts/{{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "accounts", "{{userId}}"]
+            },
+            "description": "JWT + ROOT. Edits an account: email?, username?, password? (reset), role?, accountType?, status? (DISABLED retires it). Logs UPDATE_ACCOUNT. account.not_found when missing."
+          },
+          "response": []
+        },
+        {
+          "name": "List claims (root)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/claims?status=PENDING",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "claims"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING",
+                  "description": "PENDING | APPROVED | REJECTED"
+                },
+                { "key": "cursor", "value": "", "disabled": true },
+                { "key": "limit", "value": "20", "disabled": true }
+              ]
+            },
+            "description": "JWT + ROOT. Cursor-paginated affiliation claims (newest first), each with its user and merchant embedded. ?status=PENDING is the review queue."
+          },
+          "response": []
+        },
+        {
+          "name": "Create claim (root, direct onboarding)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"merchantId\": \"{{merchantId}}\",\n  \"note\": \"onboarded by phone\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/claims",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "claims"]
+            },
+            "description": "JWT + ROOT. Creates an already-APPROVED affiliation and sets Merchant.ownerId. account.not_business (400) for a non-business user, merchant.already_owned (409) if the merchant has an owner, claim.user_already_affiliated (409) if the business already owns a brand."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve claim (root)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"ownership verified\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/claims/{{claimId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "claims", "{{claimId}}", "approve"]
+            },
+            "description": "JWT + ROOT. Approves a PENDING claim and sets Merchant.ownerId. claim.not_found / claim.already_resolved (409) / merchant.already_owned (409). Logs APPROVE_MERCHANT_CLAIM."
+          },
+          "response": []
+        },
+        {
+          "name": "Reject claim (root)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"no proof of ownership\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/claims/{{claimId}}/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "claims", "{{claimId}}", "reject"]
+            },
+            "description": "JWT + ROOT. Rejects a PENDING claim (the note is stored on the claim). claim.not_found / claim.already_resolved (409). Logs REJECT_MERCHANT_CLAIM."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Business",
+      "item": [
+        {
+          "name": "My business",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/business/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["business", "me"]
+            },
+            "description": "JWT + BUSINESS account with an approved affiliation. Returns { user, merchant, claim }. account.not_business / account.no_affiliation (403) otherwise."
+          },
+          "response": []
+        },
+        {
+          "name": "Publish official offer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Official promo\",\n  \"description\": \"Straight from the brand\",\n  \"offerType\": \"discount\",\n  \"isOnline\": true,\n  \"externalUrl\": \"https://acme.co/deal\",\n  \"startDate\": \"2026-08-01T00:00:00.000Z\",\n  \"endDate\": \"2026-08-31T23:59:59.000Z\",\n  \"categoryIds\": [\"{{categoryId}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/business/offers",
+              "host": ["{{baseUrl}}"],
+              "path": ["business", "offers"]
+            },
+            "description": "JWT + affiliated BUSINESS. Same payload as POST /offers but WITHOUT merchantId/merchantName (rejected if sent): the merchant is forced to the affiliated brand and the offer is created official: true. Physical offers use locationId or an inline location as usual."
+          },
+          "response": []
+        },
+        {
+          "name": "Request new location",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"Carrera 7 #1-2\",\n  \"city\": \"Bogota\",\n  \"region\": \"Bogota\",\n  \"latitude\": 4.61,\n  \"longitude\": -74.08\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/business/locations",
+              "host": ["{{baseUrl}}"],
+              "path": ["business", "locations"]
+            },
+            "description": "JWT + affiliated BUSINESS. Requests a new address for the brand: created verified: false, it lands in the existing admin verification queue (GET /admin/locations?verified=false, then PATCH /admin/locations/:id/verify)."
+          },
+          "response": []
+        },
+        {
+          "name": "Business stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/business/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["business", "stats"]
+            },
+            "description": "JWT + affiliated BUSINESS. Aggregated stats over the brand's offers: { offers: { total, active }, views, clicks, score, comments, reports }."
           },
           "response": []
         }

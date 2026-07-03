@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { UserRole, UserStatus } from '@prisma/client';
+import { AccountType, UserRole, UserStatus } from '@prisma/client';
 import type { Request } from 'express';
 
 import { ErrorKey } from '../../../../common/exceptions/error-keys';
@@ -20,6 +20,7 @@ describe('JwtStrategy', () => {
     role: UserRole.USER,
     status: UserStatus.ACTIVE,
     reputation: 0,
+    accountType: AccountType.INDIVIDUAL,
     createdAt: new Date('2020-01-01T00:00:00Z'),
     updatedAt: new Date('2020-01-01T00:00:00Z'),
   };

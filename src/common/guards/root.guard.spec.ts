@@ -5,7 +5,7 @@ import type { AuthenticatedRequest } from '../../modules/identity/auth/types/aut
 import type { PublicUser } from '../../modules/identity/users/types/public-user.type';
 import { AppException } from '../exceptions/app.exception';
 import { ErrorKey } from '../exceptions/error-keys';
-import { AdminGuard } from './admin.guard';
+import { RootGuard } from './root.guard';
 
 function buildContext(user: PublicUser | null): ExecutionContext {
   const req = { user } as unknown as AuthenticatedRequest;
@@ -30,27 +30,27 @@ const baseUser: PublicUser = {
   updatedAt: new Date('2020-01-01T00:00:00Z'),
 };
 
-describe('AdminGuard', () => {
-  let guard: AdminGuard;
+describe('RootGuard', () => {
+  let guard: RootGuard;
 
   beforeEach(() => {
-    guard = new AdminGuard();
+    guard = new RootGuard();
   });
 
-  it('returns true when the user has the ADMIN role', () => {
-    const ctx = buildContext({ ...baseUser, role: UserRole.ADMIN });
+  it('returns true when the user has the ROOT role', () => {
+    const ctx = buildContext({ ...baseUser, role: UserRole.ROOT });
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
-  it('throws auth.forbidden when the user has the USER role', () => {
-    const ctx = buildContext(baseUser);
+  it('throws auth.forbidden_root for an ADMIN (root-only route)', () => {
+    const ctx = buildContext({ ...baseUser, role: UserRole.ADMIN });
 
     try {
       guard.canActivate(ctx);
       throw new Error('expected canActivate to throw');
     } catch (error) {
       expect(error).toBeInstanceOf(AppException);
-      expect((error as AppException).key).toBe(ErrorKey.AuthForbidden);
+      expect((error as AppException).key).toBe(ErrorKey.AuthForbiddenRoot);
     }
   });
 

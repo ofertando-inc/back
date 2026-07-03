@@ -69,6 +69,7 @@ const publicUserSelect = {
   email: true,
   username: true,
   role: true,
+  accountType: true,
   status: true,
   reputation: true,
   createdAt: true,
