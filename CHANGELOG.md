@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-10
+
+### Added
+
+- Added health endpoints for supervision (Uptime Kuma, Docker/Dokploy healthchecks), public and exempted from throttling since probes poll from a single IP: `GET /health/live` (liveness: `{ "status": "ok" }` as soon as the process serves requests, no dependency checked) and `GET /health` (readiness, Terminus format via `@nestjs/terminus`: a `database` Prisma ping with a 2 s timeout and a `memory_heap` check with a 512 MB threshold; any failing check turns the response into a 503 with the failing component detailed). The readiness body also carries a `meta` block — `version` (from `package.json`), `commit` (from the optional `GIT_SHA` env, omitted when unset), `environment` (`NODE_ENV`) and `uptime` (process seconds) — and the production Docker image now declares a `HEALTHCHECK` probing `/health/live`, so Dokploy reports the container healthy/unhealthy
+
 ## [1.2.0] - 2026-07-03
 
 ### Added

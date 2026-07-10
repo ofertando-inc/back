@@ -41,4 +41,7 @@ RUN npm ci --omit=dev \
 COPY --from=build /app/dist ./dist
 COPY docker/entrypoint.sh ./docker/entrypoint.sh
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:${PORT:-3000}/health/live || exit 1
+
 ENTRYPOINT ["./docker/entrypoint.sh"]
