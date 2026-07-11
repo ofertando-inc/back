@@ -194,6 +194,16 @@ Authorization: Bearer <access_token>
 
 Use the Postman collection in `postman/` for manual testing.
 
+## Supervision
+
+The API exposes public endpoints for external monitoring:
+
+- `GET /health/live` — liveness: answers `{ "status": "ok" }` as soon as the process serves requests (Docker healthcheck target).
+- `GET /health` — readiness: Terminus report (database ping, heap usage) plus a `meta` block (`version`, `commit`, `environment`, `uptime`). Answers `503` with the failing component when a check is down. Point Uptime Kuma at this one.
+- `GET /metrics` — Prometheus exposition: HTTP traffic and latency by route pattern and status (`http_requests_total`, `http_request_duration_seconds`), process default metrics, and business counters (`ofertando_offers_created_total`, `ofertando_reports_created_total`, `ofertando_comments_created_total`).
+
+`/metrics` is protected by a static bearer token when the `METRICS_TOKEN` environment variable is set (Prometheus scrapes with `Authorization: Bearer <token>`); when unset (local dev), the endpoint is open. All three endpoints skip the rate limiter since probes poll from a single IP.
+
 ## CI
 
 GitHub Actions runs validation on:
