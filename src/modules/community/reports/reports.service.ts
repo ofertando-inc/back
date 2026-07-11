@@ -4,6 +4,7 @@ import { OfferStatus, Report, ReportStatus } from '@prisma/client';
 
 import { AppException } from '../../../common/exceptions/app.exception';
 import { ErrorKey } from '../../../common/exceptions/error-keys';
+import { MetricsService } from '../../../metrics/metrics.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ReportResponse } from './types/report-response.type';
@@ -15,6 +16,7 @@ export class ReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async create(
@@ -22,7 +24,11 @@ export class ReportsService {
     offerId: string,
     dto: CreateReportDto,
   ): Promise<ReportResponse> {
-    return this.prisma.$transaction(async (tx) => {
+    // Flipped inside the transaction so the metric only counts committed
+    // reports, and skips the still-open no-op path.
+    let reported = false;
+
+    const result = await this.prisma.$transaction(async (tx) => {
       const offer = await tx.offer.findUnique({ where: { id: offerId } });
 
       if (!offer || offer.status === OfferStatus.DELETED) {
@@ -73,6 +79,8 @@ export class ReportsService {
         });
       }
 
+      reported = true;
+
       const incremented = await tx.offer.update({
         where: { id: offerId },
         data: { reportCount: { increment: 1 } },
@@ -93,6 +101,12 @@ export class ReportsService {
 
       return { status: incremented.status };
     });
+
+    if (reported) {
+      this.metricsService.reportCreated('offer');
+    }
+
+    return result;
   }
 
   findUserReport(userId: string, offerId: string): Promise<Report | null> {
