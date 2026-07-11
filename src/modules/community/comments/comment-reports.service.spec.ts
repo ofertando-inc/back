@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 
 import { ErrorKey } from '../../../common/exceptions/error-keys';
+import { MetricsService } from '../../../metrics/metrics.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CommentReportsService } from './comment-reports.service';
 
@@ -64,6 +65,7 @@ describe('CommentReportsService', () => {
     commentReport: PrismaCommentReportMock;
     $transaction: jest.Mock;
   };
+  let metricsService: { reportCreated: jest.Mock };
 
   beforeEach(async () => {
     comment = { findUnique: jest.fn(), update: jest.fn() };
@@ -77,11 +79,13 @@ describe('CommentReportsService', () => {
       commentReport,
       $transaction: jest.fn((cb: (tx: typeof prisma) => unknown) => cb(prisma)),
     };
+    metricsService = { reportCreated: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommentReportsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: MetricsService, useValue: metricsService },
       ],
     }).compile();
 

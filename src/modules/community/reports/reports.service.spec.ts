@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 
 import { ErrorKey } from '../../../common/exceptions/error-keys';
+import { MetricsService } from '../../../metrics/metrics.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReportsService } from './reports.service';
 
@@ -76,6 +77,7 @@ describe('ReportsService', () => {
     $transaction: jest.Mock;
   };
   let threshold = 3;
+  let metricsService: { reportCreated: jest.Mock };
 
   beforeEach(async () => {
     threshold = 3;
@@ -86,6 +88,7 @@ describe('ReportsService', () => {
       report,
       $transaction: jest.fn((cb: (tx: typeof prisma) => unknown) => cb(prisma)),
     };
+    metricsService = { reportCreated: jest.fn() };
 
     const configService = {
       get: jest.fn(() => threshold),
@@ -96,6 +99,7 @@ describe('ReportsService', () => {
         ReportsService,
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: configService },
+        { provide: MetricsService, useValue: metricsService },
       ],
     }).compile();
 
