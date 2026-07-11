@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-11
+
+### Added
+
+- Added Prometheus metrics for observability: `GET /metrics` (exposition format via `@willsoto/nestjs-prometheus` / `prom-client`, throttling-exempt, protected by a static bearer when the `METRICS_TOKEN` env is set — Prometheus scrapes with `Authorization: Bearer <token>`; open when unset for local dev). Exposes the default process metrics (CPU, memory, event loop lag, GC), HTTP traffic recorded by a global middleware — `http_requests_total` and `http_request_duration_seconds` labeled by `method`, **route pattern** (`/offers/:id`, `unmatched` for 404s — never the raw URL, to keep cardinality bounded) and `status`, `/metrics` itself excluded — and three business counters incremented in the services: `ofertando_offers_created_total{official}`, `ofertando_reports_created_total{target="offer|comment"}` (committed reports only, re-opens included, still-open no-ops excluded) and `ofertando_comments_created_total`
+- Added health endpoints for supervision (Uptime Kuma, Docker/Dokploy healthchecks), public and exempted from throttling since probes poll from a single IP: `GET /health/live` (liveness: `{ "status": "ok" }` as soon as the process serves requests, no dependency checked) and `GET /health` (readiness, Terminus format via `@nestjs/terminus`: a `database` Prisma ping with a 2 s timeout and a `memory_heap` check with a 512 MB threshold; any failing check turns the response into a 503 with the failing component detailed). The readiness body also carries a `meta` block — `version` (from `package.json`), `commit` (from the optional `GIT_SHA` env, omitted when unset), `environment` (`NODE_ENV`) and `uptime` (process seconds) — and the production Docker image now declares a `HEALTHCHECK` probing `/health/live`, so Dokploy reports the container healthy/unhealthy
+
 ## [1.2.0] - 2026-07-03
 
 ### Added
@@ -315,6 +322,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production container entrypoint now uses the correct runtime command.
 - Frontend browser access now works through configured CORS origins.
 
+[1.3.0]: https://github.com/ofertando-inc/back/releases/tag/v1.3.0
 [1.2.0]: https://github.com/ofertando-inc/back/releases/tag/v1.2.0
 [1.1.1]: https://github.com/ofertando-inc/back/releases/tag/v1.1.1
 [1.1.0]: https://github.com/ofertando-inc/back/releases/tag/v1.1.0

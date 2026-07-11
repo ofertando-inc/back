@@ -5,6 +5,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { authConfig } from './config/auth.config';
+import { HealthModule } from './health/health.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { commentReportConfig } from './config/comment-report.config';
 import { geocodingConfig } from './config/geocoding.config';
 import { offerExpirationConfig } from './config/offer-expiration.config';
@@ -35,6 +37,8 @@ import { PrismaModule } from './prisma/prisma.module';
       skipIf: () => process.env.NODE_ENV === 'test',
     }),
     PrismaModule,
+    HealthModule,
+    MetricsModule,
     IdentityModule,
     CatalogModule,
     CommunityModule,

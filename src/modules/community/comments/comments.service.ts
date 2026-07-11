@@ -9,6 +9,7 @@ import {
   encodeCursor,
 } from '../../../common/pagination/cursor.helper';
 import type { PaginatedResult } from '../../../common/pagination/paginated-result.type';
+import { MetricsService } from '../../../metrics/metrics.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { ListCommentsQueryDto } from './dto/list-comments-query.dto';
@@ -39,14 +40,17 @@ type CommentWithRelations = Prisma.CommentGetPayload<{
 
 @Injectable()
 export class CommentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metricsService: MetricsService,
+  ) {}
 
   async create(
     userId: string,
     offerId: string,
     dto: CreateCommentDto,
   ): Promise<CommentResponse> {
-    return this.prisma.$transaction(async (tx) => {
+    const response = await this.prisma.$transaction(async (tx) => {
       const offer = await tx.offer.findUnique({ where: { id: offerId } });
 
       if (!offer || offer.status === OfferStatus.DELETED) {
@@ -108,6 +112,10 @@ export class CommentsService {
 
       return this.toResponse(comment);
     });
+
+    this.metricsService.commentCreated();
+
+    return response;
   }
 
   findThread(

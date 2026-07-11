@@ -6,6 +6,7 @@ import {
   decodeCursor,
   encodeCursor,
 } from '../../../common/pagination/cursor.helper';
+import { MetricsService } from '../../../metrics/metrics.service';
 import { LocationsService } from '../merchants/locations.service';
 import { MerchantsService } from '../merchants/merchants.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -119,6 +120,7 @@ describe('OffersService', () => {
   let prismaCategory: { count: jest.Mock; findMany: jest.Mock };
   let prismaMerchant: { findUnique: jest.Mock };
   let merchantsService: { assertExists: jest.Mock; findOrCreate: jest.Mock };
+  let metricsService: { offerCreated: jest.Mock };
   let locationsService: {
     findForMerchant: jest.Mock;
     findOrCreate: jest.Mock;
@@ -157,6 +159,7 @@ describe('OffersService', () => {
         city: 'Bogotá',
       }),
     };
+    metricsService = { offerCreated: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -174,6 +177,7 @@ describe('OffersService', () => {
         },
         { provide: MerchantsService, useValue: merchantsService },
         { provide: LocationsService, useValue: locationsService },
+        { provide: MetricsService, useValue: metricsService },
       ],
     }).compile();
 

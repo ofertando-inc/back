@@ -1,0 +1,84 @@
+name: "Bug report"
+description: "Report a malfunction or a regression"
+title: "[Bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Fill in every field — a qualified bug is a bug half fixed.
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happens, exactly? Include the error message or key if any.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Log in as …
+        2. Go to …
+        3. Click …
+        4. See error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: Blocking = no workaround, feature unusable · Major = wrong result or degraded flow · Minor = annoying but workable · Cosmetic = visual only
+      options:
+        - Blocking
+        - Major
+        - Minor
+        - Cosmetic
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - production
+        - staging
+        - dev
+        - local
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Tag (vX.Y.Z) or commit SHA of the running build
+      placeholder: v1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: context
+    attributes:
+      label: Context
+      description: Browser/OS if relevant, account role (visitor, user, business, admin, root)
+      placeholder: Firefox 140 / Fedora — role user
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs / screenshots
+      description: Console output, server logs, screenshots — anything that shows the problem.
