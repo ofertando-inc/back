@@ -3,6 +3,7 @@ import { Comment, Offer, OfferStatus, VoteType } from '@prisma/client';
 
 import { ErrorKey } from '../../../common/exceptions/error-keys';
 import { encodeCursor } from '../../../common/pagination/cursor.helper';
+import { MetricsService } from '../../../metrics/metrics.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CommentsService } from './comments.service';
 
@@ -82,6 +83,7 @@ describe('CommentsService', () => {
     comment: typeof comment;
     $transaction: jest.Mock;
   };
+  let metricsService: { commentCreated: jest.Mock };
 
   beforeEach(async () => {
     offer = { findUnique: jest.fn(), update: jest.fn() };
@@ -98,11 +100,13 @@ describe('CommentsService', () => {
       comment,
       $transaction: jest.fn((cb: (tx: typeof prisma) => unknown) => cb(prisma)),
     };
+    metricsService = { commentCreated: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommentsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: MetricsService, useValue: metricsService },
       ],
     }).compile();
 

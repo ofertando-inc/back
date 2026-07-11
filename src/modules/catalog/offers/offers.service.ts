@@ -12,6 +12,7 @@ import {
   LocationsService,
   type LocationInput,
 } from '../merchants/locations.service';
+import { MetricsService } from '../../../metrics/metrics.service';
 import { MerchantsService } from '../merchants/merchants.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
@@ -106,6 +107,7 @@ export class OffersService {
     private readonly prisma: PrismaService,
     private readonly merchantsService: MerchantsService,
     private readonly locationsService: LocationsService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async create(dto: CreateOfferDto, userId: string): Promise<OfferResponse> {
@@ -146,6 +148,8 @@ export class OffersService {
       },
       include: this.buildOfferResponseInclude(userId),
     });
+
+    this.metricsService.offerCreated(official);
 
     return this.toOfferResponse(offer);
   }

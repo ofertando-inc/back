@@ -3,13 +3,17 @@ import { CommentReport, ReportStatus } from '@prisma/client';
 
 import { AppException } from '../../../common/exceptions/app.exception';
 import { ErrorKey } from '../../../common/exceptions/error-keys';
+import { MetricsService } from '../../../metrics/metrics.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReportCommentDto } from './dto/report-comment.dto';
 import { CommentReportResponse } from './types/comment-report-response.type';
 
 @Injectable()
 export class CommentReportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly metricsService: MetricsService,
+  ) {}
 
   async create(
     userId: string,
@@ -17,7 +21,11 @@ export class CommentReportsService {
     commentId: string,
     dto: ReportCommentDto,
   ): Promise<CommentReportResponse> {
-    return this.prisma.$transaction(async (tx) => {
+    // Flipped inside the transaction so the metric only counts committed
+    // reports, and skips the still-open no-op path.
+    let reported = false;
+
+    const result = await this.prisma.$transaction(async (tx) => {
       const comment = await tx.comment.findUnique({ where: { id: commentId } });
 
       if (!comment || comment.deletedAt || comment.offerId !== offerId) {
@@ -64,6 +72,8 @@ export class CommentReportsService {
         });
       }
 
+      reported = true;
+
       const incremented = await tx.comment.update({
         where: { id: commentId },
         data: { reportCount: { increment: 1 } },
@@ -71,6 +81,12 @@ export class CommentReportsService {
 
       return { reportCount: incremented.reportCount };
     });
+
+    if (reported) {
+      this.metricsService.reportCreated('comment');
+    }
+
+    return result;
   }
 
   findUserReport(
